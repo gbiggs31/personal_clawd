@@ -19,7 +19,7 @@ from telegram.ext import (
 import anthropic
 from openai import AsyncOpenAI
 
-from gym_sheets import GymSheets, format_history_for_prompt, format_cycle_for_prompt
+from gym_db import GymDB, format_history_for_prompt, format_cycle_for_prompt
 from gym_extractor import extract_workout, summarise_cycle, lookup_exercise, classify_session, extract_profile
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -31,8 +31,8 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 GYM_TOPIC_ID = int(os.environ["GYM_TOPIC_ID"]) if os.environ.get("GYM_TOPIC_ID") else None
-GOOGLE_SHEETS_CREDENTIALS = os.environ.get("GOOGLE_SHEETS_CREDENTIALS", "")
-GOOGLE_SHEETS_NAME = os.environ.get("GOOGLE_SHEETS_NAME", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 HISTORY_FILE = "conversation_history.json"
 MAX_HISTORY_TURNS = 20
@@ -157,46 +157,54 @@ def append_to_history(user_id: str, role: str, content: str):
 
 # ── Gym in-memory state ────────────────────────────────────────────────────────
 
-_sheets: Optional[GymSheets] = None
-active_cycle: Optional[dict] = None
-gym_sessions: dict[str, str] = {}        # user_id → session_id (UUID)
-session_start: dict[str, datetime] = {}  # user_id → session start time
-pending_logs: dict[str, dict] = {}       # user_id → {text, partial_parse}
-cycle_planning: dict[str, list] = {}     # user_id → planning conversation history
-_known_exercises: set[str] = set()       # exercise names seen in the sheet (for lookup detection)
+_sheets: Optional[GymDB] = None
+active_cycles: dict[str, Optional[dict]] = {}   # user_id → active cycle (None if none)
+gym_sessions: dict[str, str] = {}               # user_id → session_id (UUID)
+session_start: dict[str, datetime] = {}         # user_id → session start time
+pending_logs: dict[str, dict] = {}              # user_id → {text, partial_parse}
+cycle_planning: dict[str, list] = {}            # user_id → planning conversation history
+_user_exercises: dict[str, set[str]] = {}       # user_id → exercise names (for lookup detection)
 
-# ── Sheets initialisation ──────────────────────────────────────────────────────
+# ── DB initialisation ──────────────────────────────────────────────────────────
 
-async def get_sheets() -> GymSheets:
-    """Lazy-init: connect to Google Sheets on first use and cache the client."""
-    global _sheets, active_cycle
+async def get_sheets() -> GymDB:
+    """Lazy-init: connect to Supabase on first use and cache the client."""
+    global _sheets
     if _sheets is None:
-        if not GOOGLE_SHEETS_CREDENTIALS or not GOOGLE_SHEETS_NAME:
-            raise RuntimeError(
-                "GOOGLE_SHEETS_CREDENTIALS and GOOGLE_SHEETS_NAME must be set in .env"
-            )
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in .env")
         loop = asyncio.get_event_loop()
         _sheets = await loop.run_in_executor(
             None,
-            lambda: GymSheets(GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_NAME),
+            lambda: GymDB(SUPABASE_URL, SUPABASE_KEY),
         )
-        active_cycle = await loop.run_in_executor(None, _sheets.fetch_active_cycle)
-        if active_cycle:
-            logger.info(
-                f"Active cycle loaded: {active_cycle.get('start_date')} – {active_cycle.get('end_date')}"
-            )
-        exercise_names = await loop.run_in_executor(None, _sheets.fetch_exercise_names)
-        _known_exercises.update(exercise_names)
-        logger.info(f"Loaded {len(_known_exercises)} known exercise(s) for lookup detection.")
+        logger.info("Supabase client initialised.")
     return _sheets
+
+
+async def get_active_cycle(user_id: str) -> Optional[dict]:
+    """Fetch and cache the active cycle for a user."""
+    if user_id not in active_cycles:
+        loop = asyncio.get_event_loop()
+        sheets = await get_sheets()
+        active_cycles[user_id] = await loop.run_in_executor(
+            None, lambda: sheets.fetch_active_cycle(int(user_id))
+        )
+        if active_cycles[user_id]:
+            logger.info(f"Active cycle loaded for {user_id}: {active_cycles[user_id].get('start_date')}")
+    return active_cycles[user_id]
 
 # ── Topic detection ────────────────────────────────────────────────────────────
 
 def in_gym_topic(update: Update) -> bool:
-    if GYM_TOPIC_ID is None:
-        return False
     msg = update.message or update.edited_message
-    return bool(msg and msg.message_thread_id == GYM_TOPIC_ID)
+    if not msg:
+        return False
+    # Private chats are always the gym context
+    if msg.chat.type == "private":
+        return True
+    # In groups, check for the designated topic thread
+    return GYM_TOPIC_ID is not None and msg.message_thread_id == GYM_TOPIC_ID
 
 # ── Claude query functions ─────────────────────────────────────────────────────
 
@@ -213,7 +221,7 @@ def query_claude(user_id: str, user_message: str) -> str:
     return response.content[0].text
 
 
-def query_claude_gym(user_message: str, history_text: str, session_text: str = "", profile: dict | None = None) -> str:
+def query_claude_gym(user_message: str, history_text: str, session_text: str = "", profile: dict | None = None, cycle: dict | None = None) -> str:
     """Query Claude for gym questions — profile + cycle + session + history injected as context. Synchronous."""
     if profile:
         lines = [f"- {k.replace('_', ' ').title()}: {v}" for k, v in profile.items()]
@@ -222,8 +230,8 @@ def query_claude_gym(user_message: str, history_text: str, session_text: str = "
         profile_section = "No user profile set. User can add one with /setprofile."
 
     cycle_section = (
-        format_cycle_for_prompt(active_cycle)
-        if active_cycle
+        format_cycle_for_prompt(cycle)
+        if cycle
         else "No active training cycle. The user can create one with /newcycle."
     )
     session_section = (
@@ -392,12 +400,14 @@ async def _do_log(
     message_id = update.effective_message.message_id
     sets = result.get("sets", [])
     rows = _build_set_rows(sets, session_id, date_str, message_id)
-    await loop.run_in_executor(None, lambda: sheets.append_sets(rows))
+    await loop.run_in_executor(None, lambda: sheets.append_sets(rows, int(user_id)))
 
-    # Keep exercise cache up to date so lookups work immediately after first log
+    # Keep per-user exercise cache up to date so lookups work immediately after first log
+    if user_id not in _user_exercises:
+        _user_exercises[user_id] = set()
     for s in sets:
         if s.get("exercise"):
-            _known_exercises.add(s["exercise"])
+            _user_exercises[user_id].add(s["exercise"])
 
     # Confirm
     reply = _format_logged_sets(sets)
@@ -445,18 +455,20 @@ async def handle_verbal_edit(
     for exercise in exercises:
         await loop.run_in_executor(
             None,
-            lambda ex=exercise: sheets.delete_rows_by_session_and_exercise(session_id, ex),
+            lambda ex=exercise: sheets.delete_rows_by_session_and_exercise(session_id, ex, int(user_id)),
         )
 
     # Re-insert corrected rows
     date_str = datetime.now().strftime("%Y-%m-%d")
     message_id = update.effective_message.message_id
     rows = _build_set_rows(result["sets"], session_id, date_str, message_id)
-    await loop.run_in_executor(None, lambda: sheets.append_sets(rows))
+    await loop.run_in_executor(None, lambda: sheets.append_sets(rows, int(user_id)))
 
+    if user_id not in _user_exercises:
+        _user_exercises[user_id] = set()
     for s in result["sets"]:
         if s.get("exercise"):
-            _known_exercises.add(s["exercise"])
+            _user_exercises[user_id].add(s["exercise"])
 
     reply = "Updated: " + _format_logged_sets(result["sets"])
     await update.effective_message.reply_text(reply)
@@ -464,11 +476,11 @@ async def handle_verbal_edit(
 
 # ── Exercise lookup ───────────────────────────────────────────────────────────
 
-def _detect_exercise_lookup(text: str) -> Optional[str]:
+def _detect_exercise_lookup(text: str, known_exercises: set[str]) -> Optional[str]:
     """Return the best-matching exercise name if the message looks like a lookup.
 
     A lookup is a short message (≤ 8 words, no question mark) whose core content
-    — after stripping weight/rep notation — matches an exercise in _known_exercises.
+    — after stripping weight/rep notation — matches an exercise in known_exercises.
     Returns None if no match or if the message looks like a general query.
     """
     stripped = text.strip()
@@ -491,7 +503,7 @@ def _detect_exercise_lookup(text: str) -> Optional[str]:
     best_match: Optional[str] = None
     best_score: int = 0
 
-    for ex in _known_exercises:
+    for ex in known_exercises:
         ex_lower = ex.lower()
         if len(ex_lower) < 3:
             continue
@@ -505,7 +517,7 @@ def _detect_exercise_lookup(text: str) -> Optional[str]:
 
     logger.debug(
         f"Exercise lookup: text={text!r} cleaned={cleaned!r} "
-        f"known_count={len(_known_exercises)} matched={best_match!r}"
+        f"known_count={len(known_exercises)} matched={best_match!r}"
     )
     return best_match
 
@@ -550,7 +562,7 @@ async def handle_exercise_lookup(
     try:
         sheets = await get_sheets()
         exercise_sets = await loop.run_in_executor(
-            None, lambda: sheets.fetch_exercise_sessions(matched_exercise)
+            None, lambda: sheets.fetch_exercise_sessions(matched_exercise, int(user_id))
         )
 
         if not exercise_sets:
@@ -619,10 +631,14 @@ async def handle_gym_topic_message(
         return
 
     # Priority 4: exercise lookup shortcut
-    # Ensure _known_exercises is populated (may be empty after a bot restart)
-    if not _known_exercises:
-        await get_sheets()  # populates _known_exercises as a side effect
-    matched_exercise = _detect_exercise_lookup(text)
+    # Ensure per-user exercise cache is populated (may be empty after a bot restart)
+    if user_id not in _user_exercises:
+        sheets = await get_sheets()
+        exercises = await loop.run_in_executor(
+            None, lambda: sheets.fetch_exercise_names(int(user_id))
+        )
+        _user_exercises[user_id] = exercises
+    matched_exercise = _detect_exercise_lookup(text, _user_exercises.get(user_id, set()))
     if matched_exercise:
         await handle_exercise_lookup(update, context, user_id, text, matched_exercise)
         return
@@ -638,22 +654,24 @@ async def handle_gym_query(
     loop = asyncio.get_event_loop()
     try:
         sheets = await get_sheets()
-        sets, sessions, profile = await loop.run_in_executor(
-            None, lambda: (*sheets.fetch_recent_data(), sheets.fetch_profile())
+        sets, sessions = await loop.run_in_executor(
+            None, lambda: sheets.fetch_recent_data(int(user_id))
         )
+        profile = await loop.run_in_executor(None, lambda: sheets.fetch_profile(int(user_id)))
         history_text = format_history_for_prompt(sets, sessions)
+        cycle = await get_active_cycle(user_id)
 
         session_text = ""
         if user_id in gym_sessions:
             session_id = gym_sessions[user_id]
             session_sets = await loop.run_in_executor(
-                None, lambda: sheets.fetch_session_sets(session_id)
+                None, lambda: sheets.fetch_session_sets(session_id, int(user_id))
             )
             if session_sets:
                 session_text = _format_exercise_history(session_sets)
 
         reply = await loop.run_in_executor(
-            None, lambda: query_claude_gym(query, history_text, session_text, profile)
+            None, lambda: query_claude_gym(query, history_text, session_text, profile, cycle)
         )
         await update.effective_message.reply_text(reply)
     except Exception as e:
@@ -781,7 +799,7 @@ async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
         loop = asyncio.get_event_loop()
         sheets = await get_sheets()
         await loop.run_in_executor(
-            None, lambda: sheets.delete_rows_by_message_id(message_id)
+            None, lambda: sheets.delete_rows_by_message_id(message_id, int(user_id))
         )
         await _do_log(update, context, user_id, text)
     except Exception as e:
@@ -889,7 +907,9 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             loop = asyncio.get_event_loop()
             sheets = await get_sheets()
-            sets, sessions = await loop.run_in_executor(None, sheets.fetch_recent_data)
+            sets, sessions = await loop.run_in_executor(
+                None, lambda: sheets.fetch_recent_data(int(user_id))
+            )
             history_text = format_history_for_prompt(sets, sessions)
             await update.message.reply_text(
                 f"Last 90 days — {len(sessions)} session(s), {len(sets)} set(s):\n\n{history_text}"
@@ -932,7 +952,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in gym_sessions:
             date_str = datetime.now().strftime("%Y-%m-%d")
             orphaned_sid = await loop.run_in_executor(
-                None, lambda: sheets.find_orphaned_session(date_str)
+                None, lambda: sheets.find_orphaned_session(date_str, int(user_id))
             )
             if orphaned_sid:
                 gym_sessions[user_id] = orphaned_sid
@@ -952,7 +972,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Fetch exercises logged this session and classify
         exercises = await loop.run_in_executor(
-            None, lambda: sheets.fetch_session_exercises(session_id)
+            None, lambda: sheets.fetch_session_exercises(session_id, int(user_id))
         )
         classification = await loop.run_in_executor(
             None, lambda: classify_session(claude, exercises)
@@ -967,7 +987,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cardio_flag": classification.get("cardio_flag", False),
             "abs_flag": classification.get("abs_flag", False),
         }
-        await loop.run_in_executor(None, lambda: sheets.append_session(row))
+        await loop.run_in_executor(None, lambda: sheets.append_session(row, int(user_id)))
 
         dur_str = f" ({duration_mins} mins)" if duration_mins is not None else ""
         note_str = f"\nNote: {overall_note}" if overall_note else ""
@@ -981,24 +1001,28 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
         loop = asyncio.get_event_loop()
         sheets = await get_sheets()
-        sets, sessions = await loop.run_in_executor(None, sheets.fetch_recent_data)
+        sets, sessions = await loop.run_in_executor(
+            None, lambda: sheets.fetch_recent_data(int(user_id))
+        )
 
         if not sets and not sessions:
             await update.message.reply_text("No workout data found in the last 90 days.")
             return
 
         history_text = format_history_for_prompt(sets, sessions)
+        cycle = await get_active_cycle(user_id)
         stats_query = (
             "Give me a concise training stats summary for the last 90 days. "
             "Include: sessions per week average, top exercises by volume, "
             "notable PRs or strength trends, and any recurring injury flags."
         )
         reply = await loop.run_in_executor(
-            None, lambda: query_claude_gym(stats_query, history_text)
+            None, lambda: query_claude_gym(stats_query, history_text, cycle=cycle)
         )
         await update.message.reply_text(reply)
     except Exception as e:
@@ -1013,7 +1037,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         loop = asyncio.get_event_loop()
         sheets = await get_sheets()
-        profile = await loop.run_in_executor(None, sheets.fetch_profile)
+        profile = await loop.run_in_executor(None, lambda: sheets.fetch_profile(int(user_id)))
         if not profile:
             await update.message.reply_text(
                 "No profile set yet.\n"
@@ -1047,7 +1071,7 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not updates:
             await update.message.reply_text("Couldn't extract any profile fields from that — try rephrasing.")
             return
-        await loop.run_in_executor(None, lambda: sheets.update_profile(updates))
+        await loop.run_in_executor(None, lambda: sheets.update_profile(updates, int(user_id)))
         lines = [f"*{k.replace('_', ' ').title()}:* {v}" for k, v in updates.items()]
         await update.message.reply_text("Profile updated:\n\n" + "\n".join(lines), parse_mode="Markdown")
     except Exception as e:
@@ -1112,9 +1136,10 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # Complete any existing active cycle first
-        if active_cycle:
-            old_id = active_cycle.get("cycle_id", "")
-            await loop.run_in_executor(None, lambda: sheets.complete_cycle(old_id))
+        existing = active_cycles.get(user_id)
+        if existing:
+            old_id = existing.get("cycle_id", "")
+            await loop.run_in_executor(None, lambda: sheets.complete_cycle(old_id, int(user_id)))
 
         cycle_id = str(uuid.uuid4())
         new_cycle = {
@@ -1125,8 +1150,8 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "workout_plan": summary.get("workout_plan", ""),
             "status": "active",
         }
-        await loop.run_in_executor(None, lambda: sheets.append_cycle(new_cycle))
-        active_cycle = new_cycle
+        await loop.run_in_executor(None, lambda: sheets.append_cycle(new_cycle, int(user_id)))
+        active_cycles[user_id] = new_cycle
         del cycle_planning[user_id]
 
         plan_preview = new_cycle["workout_plan"]
@@ -1154,17 +1179,20 @@ async def cmd_cancelcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_cycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not active_cycle:
+    user_id = str(update.effective_user.id)
+    cycle = await get_active_cycle(user_id)
+    if not cycle:
         await update.message.reply_text(
             "No active training cycle. Use /newcycle to create one."
         )
         return
-    await update.message.reply_text(format_cycle_for_prompt(active_cycle))
+    await update.message.reply_text(format_cycle_for_prompt(cycle))
 
 
 async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global active_cycle
-    if not active_cycle:
+    user_id = str(update.effective_user.id)
+    cycle = await get_active_cycle(user_id)
+    if not cycle:
         await update.message.reply_text("No active training cycle to end.")
         return
 
@@ -1172,9 +1200,9 @@ async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         loop = asyncio.get_event_loop()
         sheets = await get_sheets()
-        cycle_id = active_cycle.get("cycle_id", "")
-        await loop.run_in_executor(None, lambda: sheets.complete_cycle(cycle_id))
-        active_cycle = None
+        cycle_id = cycle.get("cycle_id", "")
+        await loop.run_in_executor(None, lambda: sheets.complete_cycle(cycle_id, int(user_id)))
+        active_cycles[user_id] = None
         note = " ".join(context.args) if context.args else ""
         note_str = f"\nNote: {note}" if note else ""
         await update.message.reply_text(f"Training cycle completed.{note_str}")
