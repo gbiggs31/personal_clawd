@@ -259,6 +259,78 @@ def extract_profile(client: anthropic.Anthropic, text: str) -> dict:
         return {}
 
 
+SESSION_SUMMARY_SYSTEM = """You are a personal trainer giving a post-session debrief. The user has just finished a gym session.
+
+Write a short, useful summary of what they did and any coaching observations. Be direct and specific — reference actual numbers. This is read immediately after training, so keep it tight.
+
+## Format
+
+**Session summary**
+[2–3 sentences covering what was trained, total volume feel, and any standout sets or PRs]
+
+**Coaching notes**
+- [specific observation grounded in the numbers — trend, load management, technique note from session notes]
+- [injury or fatigue flag if present — address it directly with a practical cue]
+- [one forward-looking point — what to focus on or adjust next session]
+
+## Rules
+- 2–4 bullet points max — no padding
+- Reference actual weights, reps, RPE/RIR where logged
+- If injury flags are present, always include a note
+- If session notes mention form issues or fatigue, address them
+- Do NOT use generic praise — be direct and specific"""
+
+
+def summarise_session(
+    client: anthropic.Anthropic,
+    sets: list[dict],
+    duration_mins: int | None,
+    session_type: str,
+    overall_note: str | None,
+) -> str:
+    """Generate a post-session summary and coaching notes from the logged sets.
+
+    Synchronous — wrap in run_in_executor when calling from async context.
+    """
+    lines = []
+    if duration_mins:
+        lines.append(f"Duration: {duration_mins} mins")
+    lines.append(f"Session type: {session_type}")
+    if overall_note:
+        lines.append(f"Session note: {overall_note}")
+    lines.append("")
+
+    # Group sets by exercise for readability
+    exercises: dict[str, list] = {}
+    for s in sorted(sets, key=lambda x: int(x.get("set_num") or 0)):
+        exercises.setdefault(str(s.get("exercise", "?")), []).append(s)
+
+    for ex, ex_sets in exercises.items():
+        set_parts = []
+        notes = []
+        for s in ex_sets:
+            w = s.get("weight_kg") or "bw"
+            r = s.get("reps") or "?"
+            rpe = f" @RPE{s['rpe']}" if s.get("rpe") else ""
+            rir = f" RIR{s['rir']}" if s.get("rir") else ""
+            injury = " [INJURY]" if s.get("injury_flag") is True or str(s.get("injury_flag", "")).lower() == "true" else ""
+            set_parts.append(f"{w}×{r}{rpe}{rir}{injury}")
+            if s.get("note"):
+                notes.append(f"{s['note']} ({s.get('note_type', 'note')})")
+        line = f"{ex}: {', '.join(set_parts)}"
+        if notes:
+            line += " | Notes: " + "; ".join(notes)
+        lines.append(line)
+
+    user_content = "\n".join(lines)
+    return _call_claude(
+        client,
+        SESSION_SUMMARY_SYSTEM,
+        [{"role": "user", "content": user_content}],
+        max_tokens=512,
+    )
+
+
 def summarise_cycle(
     client: anthropic.Anthropic,
     planning_history: list,
