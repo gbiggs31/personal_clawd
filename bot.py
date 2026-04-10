@@ -640,7 +640,7 @@ async def handle_exercise_lookup(
         )
         await update.message.reply_text(reply)
     except Exception as e:
-        logger.error(f"Exercise lookup error: {e}")
+        logger.exception("Exercise lookup error")
         await update.message.reply_text(f"Error fetching exercise data: {e}")
 
 # ── Gym topic routing ──────────────────────────────────────────────────────────
@@ -732,7 +732,7 @@ async def handle_gym_query(
         )
         await update.effective_message.reply_text(reply)
     except Exception as e:
-        logger.error(f"Gym query error: {e}")
+        logger.exception("Gym query error")
         await update.effective_message.reply_text(f"Error: {e}")
 
 # ── Telegram message handlers ──────────────────────────────────────────────────
@@ -770,7 +770,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await handle_gym_topic_message(update, context, user_id, user_message)
         except anthropic.APIStatusError as e:
-            logger.error(f"Anthropic API error: {e}", exc_info=True)
+            logger.exception("Anthropic API error")
             if e.status_code == 529:
                 await update.effective_message.reply_text(
                     "Claude is overloaded right now — please try again in a moment."
@@ -778,7 +778,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.effective_message.reply_text(f"API error ({e.status_code}): {e.message}")
         except Exception as e:
-            logger.error(f"Gym topic handler error: {e}", exc_info=True)
+            logger.exception("Gym topic handler error")
             await update.effective_message.reply_text(f"Error: {e}")
         return
 
@@ -843,7 +843,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
         except Exception as e:
-            logger.error(f"Ensemble error: {e}")
+            logger.exception("Ensemble error")
             await update.message.reply_text(f"Ensemble error: {e}")
         return
 
@@ -854,7 +854,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         append_to_history(user_id, "assistant", reply)
         await update.message.reply_text(reply)
     except Exception as e:
-        logger.error(f"Error querying GPT-4o: {e}")
+        logger.exception("Error querying GPT-4o")
         await update.message.reply_text(f"Error: {e}")
 
 
@@ -879,7 +879,7 @@ async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
         )
         await _do_log(update, context, user_id, text)
     except Exception as e:
-        logger.error(f"Edit handler error: {e}")
+        logger.exception("Edit handler error")
         await update.edited_message.reply_text(f"Error updating log: {e}")
 
 # ── Onboarding ────────────────────────────────────────────────────────────────
@@ -988,7 +988,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg)
 
     except Exception as e:
-        logger.error(f"Start command error: {e}", exc_info=True)
+        logger.exception("Start command error")
         await update.message.reply_text("Something went wrong. Please try again in a moment.")
 
 
@@ -1098,7 +1098,7 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await _do_log(update, context, user_id, text)
     except Exception as e:
-        logger.error(f"Log command error: {e}")
+        logger.exception("Log command error")
         await update.message.reply_text(f"Error logging workout: {e}")
 
 
@@ -1173,7 +1173,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await update.message.reply_text(summary)
     except Exception as e:
-        logger.error(f"Done command error: {e}")
+        logger.exception("Done command error")
         await update.message.reply_text(f"Error closing session: {e}")
 
 
@@ -1206,7 +1206,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(reply)
     except Exception as e:
-        logger.error(f"Stats error: {e}")
+        logger.exception("Stats error")
         await update.message.reply_text(f"Error fetching stats: {e}")
 
 # ── Profile command handlers ───────────────────────────────────────────────────
@@ -1229,7 +1229,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = [f"*{k.replace('_', ' ').title()}:* {v}" for k, v in profile.items()]
         await update.message.reply_text("*Your Profile*\n\n" + "\n".join(lines), parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Profile fetch error: {e}")
+        logger.exception("Profile fetch error")
         await update.message.reply_text(f"Error: {e}")
 
 
@@ -1259,7 +1259,7 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = [f"*{k.replace('_', ' ').title()}:* {v}" for k, v in updates.items()]
         await update.message.reply_text("Profile updated:\n\n" + "\n".join(lines), parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Profile update error: {e}")
+        logger.exception("Profile update error")
         await update.message.reply_text(f"Error: {e}")
 
 
@@ -1356,7 +1356,7 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{plan_preview}"
         )
     except Exception as e:
-        logger.error(f"Confirm cycle error: {e}")
+        logger.exception("Confirm cycle error")
         await update.message.reply_text(f"Error saving cycle: {e}")
 
 
@@ -1398,15 +1398,25 @@ async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         note_str = f"\nNote: {note}" if note else ""
         await update.message.reply_text(f"Training cycle completed.{note_str}")
     except Exception as e:
-        logger.error(f"End cycle error: {e}")
+        logger.exception("End cycle error")
         await update.message.reply_text(f"Error ending cycle: {e}")
 
 # ── Main ───────────────────────────────────────────────────────────────────────
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Log unhandled exceptions and notify the user."""
+    logger.exception("Unhandled exception in update handler", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        await update.effective_message.reply_text(
+            f"Something went wrong: {context.error}\n\nCheck the bot logs for the full traceback."
+        )
+
 
 def main():
     logger.info("Starting The Claw Phase 3 (gym logging + cycle planning)...")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_error_handler(error_handler)
 
     # Standard commands
     app.add_handler(CommandHandler("start", cmd_start))
