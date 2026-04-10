@@ -88,18 +88,17 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_telegram_user_id ON users(telegram_user_id);
 
-CREATE TABLE signup_tokens (
+CREATE TABLE link_tokens (
   id               BIGSERIAL PRIMARY KEY,
   token            TEXT NOT NULL UNIQUE,
   telegram_user_id BIGINT NOT NULL,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
-  expires_at       TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
-  used_at          TIMESTAMPTZ
+  expires_at       TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '15 minutes')
 );
 
 -- Enable RLS (rows only accessible via SECURITY DEFINER functions or service role)
-ALTER TABLE users         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE signup_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE link_tokens ENABLE ROW LEVEL SECURITY;
 
 -- ── RPC: validate token on page load ─────────────────────────────────────────
 
@@ -112,11 +111,10 @@ AS $$
 DECLARE v_result TEXT;
 BEGIN
   SELECT CASE
-    WHEN used_at IS NOT NULL      THEN 'used'
-    WHEN expires_at <= NOW()      THEN 'expired'
-    ELSE                               'valid'
+    WHEN expires_at <= NOW() THEN 'expired'
+    ELSE                          'valid'
   END INTO v_result
-  FROM signup_tokens WHERE token = p_token;
+  FROM link_tokens WHERE token = p_token;
   RETURN COALESCE(v_result, 'not_found');
 END;
 $$;
@@ -134,12 +132,12 @@ AS $$
 DECLARE v_uid BIGINT;
 BEGIN
   SELECT telegram_user_id INTO v_uid
-  FROM signup_tokens
-  WHERE token = p_token AND used_at IS NULL AND expires_at > NOW();
+  FROM link_tokens
+  WHERE token = p_token AND expires_at > NOW();
 
   IF v_uid IS NULL THEN RETURN 'invalid_token'; END IF;
 
-  UPDATE signup_tokens SET used_at = NOW() WHERE token = p_token;
+  DELETE FROM link_tokens WHERE token = p_token;
   UPDATE users SET status = 'active', first_name = p_first_name, last_name = p_last_name, email = p_email
   WHERE telegram_user_id = v_uid;
 

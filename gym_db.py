@@ -240,7 +240,7 @@ class GymDB:
         )
 
     def create_signup_token(self, telegram_user_id: int, token: str):
-        self._post("signup_tokens", {
+        self._post("link_tokens", {
             "telegram_user_id": telegram_user_id,
             "token":            token,
         })

@@ -870,14 +870,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status == "pending":
             msg = (
                 "Your signup isn't complete yet. Use the link below to finish — "
-                "it expires in 24 hours.\n\n"
+                "it expires in 15 minutes.\n\n"
                 f"{signup_url}\n\n"
                 "After signing up, send /start again to begin."
             )
         else:
             msg = (
                 "Welcome to Liftwise — your AI gym assistant.\n\n"
-                "Complete your signup using the link below (expires in 24 hours):\n\n"
+                "Complete your signup using the link below (expires in 15 minutes):\n\n"
                 f"{signup_url}\n\n"
                 "After signing up, send /start again to get started."
             )
