@@ -79,7 +79,8 @@ CREATE INDEX idx_profile_user_id ON profile(telegram_user_id);
 CREATE TABLE users (
   id               BIGSERIAL PRIMARY KEY,
   telegram_user_id BIGINT NOT NULL UNIQUE,
-  name             TEXT,
+  first_name       TEXT,
+  last_name        TEXT,
   email            TEXT,
   status           TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'active'
   created_at       TIMESTAMPTZ DEFAULT NOW()
@@ -124,7 +125,7 @@ GRANT EXECUTE ON FUNCTION validate_signup_token(TEXT) TO anon;
 
 -- ── RPC: called from the signup page with the anon key ────────────────────────
 
-CREATE OR REPLACE FUNCTION complete_signup(p_token TEXT, p_name TEXT, p_email TEXT)
+CREATE OR REPLACE FUNCTION complete_signup(p_token TEXT, p_first_name TEXT, p_last_name TEXT, p_email TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -139,14 +140,14 @@ BEGIN
   IF v_uid IS NULL THEN RETURN 'invalid_token'; END IF;
 
   UPDATE signup_tokens SET used_at = NOW() WHERE token = p_token;
-  UPDATE users SET status = 'active', name = p_name, email = p_email
+  UPDATE users SET status = 'active', first_name = p_first_name, last_name = p_last_name, email = p_email
   WHERE telegram_user_id = v_uid;
 
   RETURN 'ok';
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION complete_signup(TEXT, TEXT, TEXT) TO anon;
+GRANT EXECUTE ON FUNCTION complete_signup(TEXT, TEXT, TEXT, TEXT) TO anon;
 
 -- ─────────────────────────────────────────────────────────────
 -- MIGRATION: run these if you already have the tables created

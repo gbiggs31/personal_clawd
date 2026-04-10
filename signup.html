@@ -151,8 +151,12 @@
 
       <form id="signup-form">
         <div class="field">
-          <label for="name">Name</label>
-          <input type="text" id="name" placeholder="Your name" required autocomplete="name" />
+          <label for="first-name">First name</label>
+          <input type="text" id="first-name" placeholder="First name" required autocomplete="given-name" />
+        </div>
+        <div class="field">
+          <label for="last-name">Last name</label>
+          <input type="text" id="last-name" placeholder="Last name" required autocomplete="family-name" />
         </div>
         <div class="field">
           <label for="email">Email</label>
@@ -234,15 +238,16 @@
 
     document.getElementById('signup-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn   = document.getElementById('submit-btn');
-      const name  = document.getElementById('name').value.trim();
-      const email = document.getElementById('email').value.trim();
+      const btn       = document.getElementById('submit-btn');
+      const firstName = document.getElementById('first-name').value.trim();
+      const lastName  = document.getElementById('last-name').value.trim();
+      const email     = document.getElementById('email').value.trim();
 
       btn.disabled = true;
       btn.textContent = 'Signing up…';
 
       try {
-        const result = await rpc('complete_signup', { p_token: token, p_name: name, p_email: email });
+        const result = await rpc('complete_signup', { p_token: token, p_first_name: firstName, p_last_name: lastName, p_email: email });
 
         if (result === 'ok') {
           document.getElementById('signup-form').style.display = 'none';
