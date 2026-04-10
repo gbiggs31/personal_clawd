@@ -34,6 +34,7 @@ GYM_TOPIC_ID = int(os.environ["GYM_TOPIC_ID"]) if os.environ.get("GYM_TOPIC_ID")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 SIGNUP_PAGE_URL = os.environ.get("SIGNUP_PAGE_URL", "https://liftwise.biggsdata.com/signup.html")
+DAILY_API_LIMIT = int(os.environ.get("DAILY_API_LIMIT", "50"))
 
 HISTORY_FILE = "conversation_history.json"
 MAX_HISTORY_TURNS = 20
@@ -195,6 +196,19 @@ async def get_active_cycle(user_id: str) -> Optional[dict]:
         if active_cycles[user_id]:
             logger.info(f"Active cycle loaded for {user_id}: {active_cycles[user_id].get('start_date')}")
     return active_cycles[user_id]
+
+_RATE_LIMIT_MSG = (
+    "You've hit your daily limit of {limit} requests. "
+    "Your limit resets at midnight UTC — see you tomorrow!"
+)
+
+async def check_rate_limit(user_id: str) -> bool:
+    """Increment usage counter. Returns True if allowed, False if limit exceeded."""
+    loop = asyncio.get_event_loop()
+    sheets = await get_sheets()
+    return await loop.run_in_executor(
+        None, lambda: sheets.check_and_increment_rate_limit(int(user_id), DAILY_API_LIMIT)
+    )
 
 async def is_user_active(user_id: str) -> bool:
     """Check if user has completed signup. Caches positives in-memory."""
@@ -722,6 +736,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ── Rate limit ─────────────────────────────────────────────────────────────
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     # ── Gym topic ──────────────────────────────────────────────────────────────
@@ -1045,6 +1064,9 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await update.message.reply_text("Usage: /log <workout description>")
         return
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
         await _do_log(update, context, user_id, text)
@@ -1056,6 +1078,9 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
         loop = asyncio.get_event_loop()
@@ -1127,6 +1152,9 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
         loop = asyncio.get_event_loop()
@@ -1180,6 +1208,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Update profile fields from natural language."""
+    user_id = str(update.effective_user.id)
     text = " ".join(context.args) if context.args else ""
     if not text:
         await update.message.reply_text(
@@ -1187,6 +1216,9 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/setprofile 28 years old, 180cm, 83kg, training for 4 years, "
             "intermediate, chronic left knee issue, train at a commercial gym"
         )
+        return
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
@@ -1208,6 +1240,9 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_newcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        return
     initial_text = " ".join(context.args) if context.args else None
 
     cycle_planning[user_id] = []
@@ -1247,6 +1282,10 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "No active cycle plan to confirm. Use /newcycle to start one."
         )
+        return
+
+    if not await check_rate_limit(user_id):
+        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")

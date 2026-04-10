@@ -221,6 +221,18 @@ class GymDB:
         result = self._get("profile", {"telegram_user_id": f"eq.{user_id}"})
         return {r["key"]: r["value"] for r in result if r.get("key") and r.get("value")}
 
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+
+    def check_and_increment_rate_limit(self, telegram_user_id: int, limit: int = 50) -> bool:
+        """Increment today's API usage counter. Returns True if allowed, False if over limit."""
+        r = requests.post(
+            f"{self.base}/rpc/increment_api_usage",
+            headers={**self.headers, "Prefer": "return=minimal"},
+            json={"p_user_id": telegram_user_id, "p_limit": limit},
+        )
+        r.raise_for_status()
+        return r.json()
+
     # ── User auth ─────────────────────────────────────────────────────────────
 
     def get_user_status(self, telegram_user_id: int) -> Optional[str]:
