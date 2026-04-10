@@ -841,6 +841,61 @@ async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
         logger.error(f"Edit handler error: {e}")
         await update.edited_message.reply_text(f"Error updating log: {e}")
 
+# ── Onboarding ────────────────────────────────────────────────────────────────
+
+async def _send_onboarding(update: Update):
+    """Send a multi-message welcome sequence to a newly activated user."""
+    messages = [
+        (
+            "Hey, welcome to *Liftwise*!\n\n"
+            "I'm your AI gym assistant. You talk to me in plain English — "
+            "I log your workouts, track your history, and answer training questions "
+            "using everything you've ever logged.\n\n"
+            "Here's a quick guide to get you started."
+        ),
+        (
+            "*Logging a workout*\n\n"
+            "Just describe what you did in natural language:\n\n"
+            "`/log bench press 3x5 @ 100kg RPE 8`\n"
+            "`/log squat 120, 125, 130kg x3`\n"
+            "`/log rdl 4 sets of 8 @ 80kg, lower back felt tight`\n\n"
+            "I'll parse the sets, weights, reps, RPE/RIR, and any notes automatically. "
+            "If something is ambiguous I'll ask you to clarify before saving.\n\n"
+            "Made a mistake? Just edit the message in Telegram — I'll update the log. "
+            "Or say something like:\n"
+            "`change my bench press to 3x5 @ 95kg`"
+        ),
+        (
+            "*Closing a session*\n\n"
+            "When you're done training, send:\n"
+            "`/done` — or `/done felt strong today` to add a note\n\n"
+            "I'll save the session, calculate how long you trained, and send you a "
+            "summary of what you did with a few coaching notes."
+        ),
+        (
+            "*Asking questions*\n\n"
+            "Just talk to me. I have full context of your training history, "
+            "current program, and profile — so be as specific as you like:\n\n"
+            "_What weight should I open with for bench today?_\n"
+            "_My shoulder has been niggly — what should I avoid?_\n"
+            "_Am I training legs enough based on my recent sessions?_\n\n"
+            "To look up a specific exercise, just send its name:\n"
+            "`bench press` → shows your last 10 sessions with coaching notes\n\n"
+            "For a full training stats summary: `/stats`"
+        ),
+        (
+            "*A few more things*\n\n"
+            "Set up your profile so I can give better advice:\n"
+            "`/setprofile 26yo, 180cm, 84kg, 3 years lifting, right shoulder issue`\n\n"
+            "View or plan a training cycle:\n"
+            "`/newcycle` — I'll ask a few questions and build you a program\n\n"
+            "Full command list: `/guide`\n\n"
+            "That's it — go train."
+        ),
+    ]
+    for msg in messages:
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
 # ── Standard command handlers ──────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -852,11 +907,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = await loop.run_in_executor(None, lambda: sheets.get_user_status(int(user_id)))
 
         if status == "active":
+            first_time = user_id not in _active_users
             _active_users.add(user_id)
-            await update.message.reply_text(
-                "Welcome back to Liftwise! Send /guide for the full command reference.",
-                parse_mode="Markdown",
-            )
+            if first_time:
+                await _send_onboarding(update)
+            else:
+                await update.message.reply_text(
+                    "Welcome back to Liftwise! Send /guide for the full command reference."
+                )
             return
 
         # Generate a fresh token regardless of whether they're new or pending
