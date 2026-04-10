@@ -167,6 +167,7 @@ pending_logs: dict[str, dict] = {}              # user_id → {text, partial_par
 cycle_planning: dict[str, list] = {}            # user_id → planning conversation history
 _user_exercises: dict[str, set[str]] = {}       # user_id → exercise names (for lookup detection)
 _active_users: set[str] = set()                 # cache of confirmed-active user IDs
+_allowlist_cache: set[str] = set()             # cache of confirmed-allowlisted user IDs
 
 # ── DB initialisation ──────────────────────────────────────────────────────────
 
@@ -209,6 +210,22 @@ async def check_rate_limit(user_id: str) -> bool:
     return await loop.run_in_executor(
         None, lambda: sheets.check_and_increment_rate_limit(int(user_id), DAILY_API_LIMIT)
     )
+
+_PRIVATE_BETA_MSG = (
+    "Liftwise is currently in private beta.\n"
+    "If you'd like early access, ask George to add you."
+)
+
+async def is_allowlisted(user_id: str) -> bool:
+    """Check if user is on the allowlist. Caches positives in-memory."""
+    if user_id in _allowlist_cache:
+        return True
+    loop = asyncio.get_event_loop()
+    sheets = await get_sheets()
+    allowed = await loop.run_in_executor(None, lambda: sheets.is_allowlisted(int(user_id)))
+    if allowed:
+        _allowlist_cache.add(user_id)
+    return allowed
 
 async def is_user_active(user_id: str) -> bool:
     """Check if user has completed signup. Caches positives in-memory."""
@@ -728,6 +745,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Message from {username} ({user_id}): {user_message[:50]}...")
 
+    # ── Allowlist gate ─────────────────────────────────────────────────────────
+    if not await is_allowlisted(user_id):
+        await update.message.reply_text(_PRIVATE_BETA_MSG)
+        return
+
     # ── Auth gate ──────────────────────────────────────────────────────────────
     if not await is_user_active(user_id):
         await update.message.reply_text(
@@ -923,6 +945,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         sheets = await get_sheets()
+
+        if not await is_allowlisted(user_id):
+            await update.message.reply_text(_PRIVATE_BETA_MSG)
+            return
+
         status = await loop.run_in_executor(None, lambda: sheets.get_user_status(int(user_id)))
 
         if status == "active":

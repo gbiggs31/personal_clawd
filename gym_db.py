@@ -235,6 +235,10 @@ class GymDB:
 
     # ── User auth ─────────────────────────────────────────────────────────────
 
+    def is_allowlisted(self, telegram_user_id: int) -> bool:
+        result = self._get("allowlist", {"telegram_user_id": f"eq.{telegram_user_id}"})
+        return bool(result)
+
     def get_user_status(self, telegram_user_id: int) -> Optional[str]:
         """Returns 'active', 'pending', or None if not found."""
         result = self._get("users", {
