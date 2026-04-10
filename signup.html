@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign up — Liftwise</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:  #0d0d0d;
+      --dark:   #1a1a1a;
+      --mid:    #2a2a2a;
+      --border: #333;
+      --text:   #e8e8e8;
+      --muted:  #888;
+      --lime:   #c8f135;
+    }
+
+    body {
+      background: var(--black);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: var(--dark);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .logo {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--lime);
+      margin-bottom: 32px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    input {
+      width: 100%;
+      background: var(--mid);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 15px;
+      padding: 12px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus { border-color: var(--lime); }
+
+    button {
+      width: 100%;
+      background: var(--lime);
+      border: none;
+      border-radius: 8px;
+      color: var(--black);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 14px;
+      margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+
+    button:hover:not(:disabled) { opacity: 0.88; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .message {
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-top: 20px;
+      padding: 14px 16px;
+      display: none;
+    }
+
+    .message.error   { background: #2a1010; border: 1px solid #5a1a1a; color: #f88; }
+    .message.success { background: #1a2a10; border: 1px solid #3a5a1a; color: var(--lime); }
+    .message.show    { display: block; }
+
+    .back-link {
+      display: block;
+      margin-top: 24px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .back-link:hover { color: var(--text); }
+
+    #loading {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Liftwise</div>
+
+    <div id="loading">Checking your invite link…</div>
+
+    <div id="form-section" style="display:none">
+      <h1>Create your account</h1>
+      <p class="subtitle">You've been invited to Liftwise. Fill in your details to get started.</p>
+
+      <form id="signup-form">
+        <div class="field">
+          <label for="name">Name</label>
+          <input type="text" id="name" placeholder="Your name" required autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@example.com" required autocomplete="email" />
+        </div>
+        <button type="submit" id="submit-btn">Complete signup</button>
+      </form>
+
+      <div class="message" id="msg"></div>
+    </div>
+
+    <div id="error-section" style="display:none">
+      <h1>Invalid link</h1>
+      <p class="subtitle" id="error-detail"></p>
+    </div>
+
+    <a href="https://liftwise.biggsdata.com" class="back-link">← Back to Liftwise</a>
+  </div>
+
+  <script>
+    // ── Config — replace with your Supabase project URL and anon key ──────────
+    const SUPABASE_URL  = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const token = new URLSearchParams(window.location.search).get('token');
+
+    async function rpc(fn, params) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'apikey':        SUPABASE_ANON,
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+        },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const text = await res.text();
+      return text ? JSON.parse(text) : null;
+    }
+
+    function showError(detail) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error-section').style.display = 'block';
+      document.getElementById('error-detail').textContent = detail;
+    }
+
+    function showMsg(text, type) {
+      const el = document.getElementById('msg');
+      el.textContent = text;
+      el.className = `message ${type} show`;
+    }
+
+    async function init() {
+      if (!token) {
+        showError('No invite token found in this link. Check the link you received in Telegram.');
+        return;
+      }
+
+      try {
+        const status = await rpc('validate_signup_token', { p_token: token });
+
+        if (status === 'valid') {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('form-section').style.display = 'block';
+        } else if (status === 'used') {
+          showError('This signup link has already been used. If you need access, ask for a new invite via Telegram.');
+        } else if (status === 'expired') {
+          showError('This signup link has expired (links last 24 hours). Send /start in Telegram to get a fresh one.');
+        } else {
+          showError('This invite link is not valid. Send /start in Telegram to request a new one.');
+        }
+      } catch (e) {
+        showError('Could not validate your invite link. Please try again or contact support.');
+        console.error(e);
+      }
+    }
+
+    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn   = document.getElementById('submit-btn');
+      const name  = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+
+      btn.disabled = true;
+      btn.textContent = 'Signing up…';
+
+      try {
+        const result = await rpc('complete_signup', { p_token: token, p_name: name, p_email: email });
+
+        if (result === 'ok') {
+          document.getElementById('signup-form').style.display = 'none';
+          showMsg(
+            'You\'re all set! Go back to Telegram and send /start to begin using Liftwise.',
+            'success'
+          );
+        } else if (result === 'invalid_token') {
+          showMsg('This link is no longer valid. Send /start in Telegram to get a fresh one.', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Complete signup';
+        } else {
+          throw new Error(`Unexpected response: ${result}`);
+        }
+      } catch (e) {
+        showMsg('Something went wrong. Please try again.', 'error');
+        console.error(e);
+        btn.disabled = false;
+        btn.textContent = 'Complete signup';
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

@@ -20,7 +20,7 @@ import anthropic
 from openai import AsyncOpenAI
 
 from gym_db import GymDB, format_history_for_prompt, format_cycle_for_prompt
-from gym_extractor import extract_workout, summarise_cycle, lookup_exercise, classify_session, extract_profile
+from gym_extractor import extract_workout, summarise_cycle, summarise_session, lookup_exercise, classify_session, extract_profile
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,7 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 GYM_TOPIC_ID = int(os.environ["GYM_TOPIC_ID"]) if os.environ.get("GYM_TOPIC_ID") else None
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SIGNUP_PAGE_URL = os.environ.get("SIGNUP_PAGE_URL", "https://liftwise.biggsdata.com/signup.html")
 
 HISTORY_FILE = "conversation_history.json"
 MAX_HISTORY_TURNS = 20
@@ -164,6 +165,7 @@ session_start: dict[str, datetime] = {}         # user_id → session start time
 pending_logs: dict[str, dict] = {}              # user_id → {text, partial_parse}
 cycle_planning: dict[str, list] = {}            # user_id → planning conversation history
 _user_exercises: dict[str, set[str]] = {}       # user_id → exercise names (for lookup detection)
+_active_users: set[str] = set()                 # cache of confirmed-active user IDs
 
 # ── DB initialisation ──────────────────────────────────────────────────────────
 
@@ -194,6 +196,18 @@ async def get_active_cycle(user_id: str) -> Optional[dict]:
             logger.info(f"Active cycle loaded for {user_id}: {active_cycles[user_id].get('start_date')}")
     return active_cycles[user_id]
 
+async def is_user_active(user_id: str) -> bool:
+    """Check if user has completed signup. Caches positives in-memory."""
+    if user_id in _active_users:
+        return True
+    loop = asyncio.get_event_loop()
+    sheets = await get_sheets()
+    status = await loop.run_in_executor(None, lambda: sheets.get_user_status(int(user_id)))
+    if status == "active":
+        _active_users.add(user_id)
+        return True
+    return False
+
 # ── Topic detection ────────────────────────────────────────────────────────────
 
 def in_gym_topic(update: Update) -> bool:
@@ -219,6 +233,18 @@ def query_claude(user_id: str, user_message: str) -> str:
         messages=messages,
     )
     return response.content[0].text
+
+
+async def query_gpt(user_id: str, user_message: str) -> str:
+    """Query GPT-4o with conversation history. Async."""
+    history = get_user_history(user_id)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_message}]
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o",
+        max_tokens=1024,
+        messages=messages,
+    )
+    return response.choices[0].message.content
 
 
 def query_claude_gym(user_message: str, history_text: str, session_text: str = "", profile: dict | None = None, cycle: dict | None = None) -> str:
@@ -687,6 +713,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.first_name or "User"
 
     logger.info(f"Message from {username} ({user_id}): {user_message[:50]}...")
+
+    # ── Auth gate ──────────────────────────────────────────────────────────────
+    if not await is_user_active(user_id):
+        await update.message.reply_text(
+            "You need to sign up before using Liftwise.\n"
+            "Send /start to get your signup link."
+        )
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     # ── Gym topic ──────────────────────────────────────────────────────────────
@@ -771,14 +806,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Ensemble error: {e}")
         return
 
-    # ── Normal Claude path ─────────────────────────────────────────────────────
+    # ── Normal GPT-4o path ─────────────────────────────────────────────────────
     try:
-        reply = query_claude(user_id, user_message)
+        reply = await query_gpt(user_id, user_message)
         append_to_history(user_id, "user", user_message)
         append_to_history(user_id, "assistant", reply)
         await update.message.reply_text(reply)
     except Exception as e:
-        logger.error(f"Error querying Claude: {e}")
+        logger.error(f"Error querying GPT-4o: {e}")
         await update.message.reply_text(f"Error: {e}")
 
 
@@ -809,28 +844,48 @@ async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
 # ── Standard command handlers ──────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Hey! I'm The Claw — your personal Claude-powered assistant.\n\n"
-        "Send me a message and I'll respond with conversation history. "
-        f"Use `{ENSEMBLE_TRIGGER}` to query Claude + GPT-4o in parallel. "
-        f"Use `{GYM_TRIGGER}` or the Gym topic for training questions.\n\n"
-        "*General commands:*\n"
-        "/start — this message\n"
-        "/clear — clear conversation history\n"
-        "/history — message count (gym history if in Gym topic)\n"
-        "/claw — all hail\n\n"
-        "*Gym commands:*\n"
-        "/log <workout> — log sets to the sheet\n"
-        "/done [note] — close current session\n"
-        "/stats — training stats summary\n\n"
-        "*Cycle commands:*\n"
-        "/newcycle [goals...] — plan a new training cycle\n"
-        "/confirmcycle — save the planned cycle\n"
-        "/cancelcycle — discard the plan\n"
-        "/cycle — view active cycle\n"
-        "/endcycle [note] — complete current cycle",
-        parse_mode="Markdown",
-    )
+    user_id = str(update.effective_user.id)
+    loop = asyncio.get_event_loop()
+
+    try:
+        sheets = await get_sheets()
+        status = await loop.run_in_executor(None, lambda: sheets.get_user_status(int(user_id)))
+
+        if status == "active":
+            _active_users.add(user_id)
+            await update.message.reply_text(
+                "Welcome back to Liftwise! Send /guide for the full command reference.",
+                parse_mode="Markdown",
+            )
+            return
+
+        # Generate a fresh token regardless of whether they're new or pending
+        token = str(uuid.uuid4())
+        if status is None:
+            await loop.run_in_executor(None, lambda: sheets.create_pending_user(int(user_id)))
+
+        await loop.run_in_executor(None, lambda: sheets.create_signup_token(int(user_id), token))
+        signup_url = f"{SIGNUP_PAGE_URL}?token={token}"
+
+        if status == "pending":
+            msg = (
+                "Your signup isn't complete yet. Use the link below to finish — "
+                "it expires in 24 hours.\n\n"
+                f"{signup_url}\n\n"
+                "After signing up, send /start again to begin."
+            )
+        else:
+            msg = (
+                "Welcome to Liftwise — your AI gym assistant.\n\n"
+                "Complete your signup using the link below (expires in 24 hours):\n\n"
+                f"{signup_url}\n\n"
+                "After signing up, send /start again to get started."
+            )
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+        logger.error(f"Start command error: {e}", exc_info=True)
+        await update.message.reply_text("Something went wrong. Please try again in a moment.")
 
 
 async def cmd_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -970,9 +1025,12 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         overall_note = " ".join(context.args) if context.args else None
 
-        # Fetch exercises logged this session and classify
-        exercises = await loop.run_in_executor(
-            None, lambda: sheets.fetch_session_exercises(session_id, int(user_id))
+        # Fetch sets and exercises logged this session
+        session_sets, exercises = await loop.run_in_executor(
+            None, lambda: (
+                sheets.fetch_session_sets(session_id, int(user_id)),
+                sheets.fetch_session_exercises(session_id, int(user_id)),
+            )
         )
         classification = await loop.run_in_executor(
             None, lambda: classify_session(claude, exercises)
@@ -995,6 +1053,15 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         flags = [f for f, v in [("cardio", classification.get("cardio_flag")), ("abs", classification.get("abs_flag"))] if v]
         flags_str = f" + {', '.join(flags)}" if flags else ""
         await update.message.reply_text(f"Session closed{dur_str} — {type_str}{flags_str}.{note_str}")
+
+        # Generate and send session summary + coaching notes
+        if session_sets:
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+            summary = await loop.run_in_executor(
+                None,
+                lambda: summarise_session(claude, session_sets, duration_mins, type_str, overall_note),
+            )
+            await update.message.reply_text(summary)
     except Exception as e:
         logger.error(f"Done command error: {e}")
         await update.message.reply_text(f"Error closing session: {e}")

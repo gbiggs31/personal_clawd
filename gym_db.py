@@ -221,6 +221,32 @@ class GymDB:
         result = self._get("profile", {"telegram_user_id": f"eq.{user_id}"})
         return {r["key"]: r["value"] for r in result if r.get("key") and r.get("value")}
 
+    # ── User auth ─────────────────────────────────────────────────────────────
+
+    def get_user_status(self, telegram_user_id: int) -> Optional[str]:
+        """Returns 'active', 'pending', or None if not found."""
+        result = self._get("users", {
+            "select":           "status",
+            "telegram_user_id": f"eq.{telegram_user_id}",
+        })
+        return result[0]["status"] if result else None
+
+    def create_pending_user(self, telegram_user_id: int):
+        """Insert a pending user row, ignoring if already exists."""
+        self._post(
+            "users?on_conflict=telegram_user_id",
+            {"telegram_user_id": telegram_user_id, "status": "pending"},
+            prefer="resolution=ignore-duplicates,return=minimal",
+        )
+
+    def create_signup_token(self, telegram_user_id: int, token: str):
+        self._post("signup_tokens", {
+            "telegram_user_id": telegram_user_id,
+            "token":            token,
+        })
+
+    # ── Profile ───────────────────────────────────────────────────────────────
+
     def update_profile(self, updates: dict, user_id: int):
         for key, value in updates.items():
             if not value:
