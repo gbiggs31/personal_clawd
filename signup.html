@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign up — Liftwise</title>
+  <title>Sign up — Avenra</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -141,13 +141,13 @@
 </head>
 <body>
   <div class="card">
-    <div class="logo">Liftwise</div>
+    <div class="logo">Avenra</div>
 
     <div id="loading">Checking your invite link…</div>
 
     <div id="form-section" style="display:none">
       <h1>Create your account</h1>
-      <p class="subtitle">You've been invited to Liftwise. Fill in your details to get started.</p>
+      <p class="subtitle">You've been invited to Avenra. Fill in your details to get started.</p>
 
       <form id="signup-form">
         <div class="field">
@@ -173,7 +173,7 @@
       <p class="subtitle" id="error-detail"></p>
     </div>
 
-    <a href="https://liftwise.biggsdata.com" class="back-link">← Back to Liftwise</a>
+    <a href="https://avenra.biggsdata.com" class="back-link">← Back to Avenra</a>
   </div>
 
   <script>
@@ -252,7 +252,7 @@
         if (result === 'ok') {
           document.getElementById('signup-form').style.display = 'none';
           showMsg(
-            'You\'re all set! Go back to Telegram and send /start to begin using Liftwise.',
+            'You\'re all set! Go back to Telegram and send /start to begin using Avenra.',
             'success'
           );
         } else if (result === 'invalid_token') {

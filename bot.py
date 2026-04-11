@@ -32,8 +32,8 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 GYM_TOPIC_ID = int(os.environ["GYM_TOPIC_ID"]) if os.environ.get("GYM_TOPIC_ID") else None
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-SIGNUP_PAGE_URL = os.environ.get("SIGNUP_PAGE_URL", "https://liftwise.biggsdata.com/signup.html")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
+SIGNUP_PAGE_URL = os.environ.get("SIGNUP_PAGE_URL", "https://avenra.biggsdata.com/signup.html")
 DAILY_API_LIMIT = int(os.environ.get("DAILY_API_LIMIT", "50"))
 
 HISTORY_FILE = "conversation_history.json"
@@ -212,7 +212,7 @@ async def check_rate_limit(user_id: str) -> bool:
     )
 
 _PRIVATE_BETA_MSG = (
-    "Liftwise is currently in private beta.\n"
+    "Avenra is currently in private beta.\n"
     "If you'd like early access, ask George to add you."
 )
 
@@ -258,7 +258,7 @@ def query_claude(user_id: str, user_message: str) -> str:
     history = get_user_history(user_id)
     messages = history + [{"role": "user", "content": user_message}]
     response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1024,
         system=SYSTEM_PROMPT,
         messages=messages,
@@ -271,7 +271,7 @@ async def query_gpt(user_id: str, user_message: str) -> str:
     history = get_user_history(user_id)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_message}]
     response = await openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.4-mini-2026-03-17",
         max_tokens=1024,
         messages=messages,
     )
@@ -303,7 +303,7 @@ def query_claude_gym(user_message: str, history_text: str, session_text: str = "
         history_section=f"=== GYM HISTORY (last 90 days) ===\n{history_text}",
     )
     response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1024,
         system=system,
         messages=[{"role": "user", "content": user_message}],
@@ -315,7 +315,7 @@ def query_claude_cycle_planning(planning_history: list, user_message: str) -> st
     """Continue a multi-turn cycle planning conversation. Synchronous."""
     messages = planning_history + [{"role": "user", "content": user_message}]
     response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2048,
         system=CYCLE_PLANNING_SYSTEM,
         messages=messages,
@@ -329,7 +329,7 @@ async def ensemble_claude(query: str) -> tuple[str, str]:
 
     def _call():
         response = claude.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": query}],
@@ -342,7 +342,7 @@ async def ensemble_claude(query: str) -> tuple[str, str]:
 
 async def ensemble_gpt(query: str) -> tuple[str, str]:
     response = await openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.4-mini-2026-03-17",
         max_tokens=1024,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -360,7 +360,7 @@ async def synthesise(query: str, claude_response: str, gpt_response: str) -> str
 
     def _call():
         response = claude.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -400,12 +400,26 @@ def _format_logged_sets(sets: list) -> str:
         exercises.setdefault(s.get("exercise", "?"), []).append(s)
     lines = [f"Logged {len(sets)} set(s):"]
     for ex, ex_sets in exercises.items():
-        parts = [
-            f"{s.get('weight_kg') if s.get('weight_kg') is not None else 'bw'}"
-            f"×{s.get('reps') if s.get('reps') is not None else '?'}"
-            for s in ex_sets
-        ]
+        parts = []
+        for s in ex_sets:
+            w = s.get("weight_kg") if s.get("weight_kg") is not None else "bw"
+            r = s.get("reps") if s.get("reps") is not None else "?"
+            meta = ""
+            if s.get("rpe") is not None:
+                meta += f" @RPE{s['rpe']}"
+            if s.get("rir") is not None:
+                meta += f" RIR{s['rir']}"
+            parts.append(f"{w}×{r}{meta}")
         lines.append(f"  {ex}: {', '.join(parts)}")
+
+        # Per-exercise notes and injury flags
+        for s in ex_sets:
+            if s.get("injury_flag"):
+                part = s.get("injury_body_part")
+                lines.append(f"  ⚠️ Injury flag: {part}" if part else "  ⚠️ Injury flag noted")
+            if s.get("note") and s.get("note_type") in ("set", "exercise"):
+                lines.append(f"  — {s['note']}")
+
     return "\n".join(lines)
 
 
@@ -753,7 +767,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Auth gate ──────────────────────────────────────────────────────────────
     if not await is_user_active(user_id):
         await update.message.reply_text(
-            "You need to sign up before using Liftwise.\n"
+            "You need to sign up before using Avenra.\n"
             "Send /start to get your signup link."
         )
         return
@@ -869,6 +883,10 @@ async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
     message_id = update.edited_message.message_id
     text = update.edited_message.text
 
+    # Don't re-process command edits (e.g. /log ...) — the command handler already ran
+    if text.startswith("/"):
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     try:
@@ -888,7 +906,7 @@ async def _send_onboarding(update: Update):
     """Send a multi-message welcome sequence to a newly activated user."""
     messages = [
         (
-            "Hey, welcome to *Liftwise*!\n\n"
+            "Hey, welcome to *Avenra*!\n\n"
             "I'm your AI gym assistant. You talk to me in plain English — "
             "I log your workouts, track your history, and answer training questions "
             "using everything you've ever logged.\n\n"
@@ -959,7 +977,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await _send_onboarding(update)
             else:
                 await update.message.reply_text(
-                    "Welcome back to Liftwise! Send /guide for the full command reference."
+                    "Welcome back to Avenra! Send /guide for the full command reference."
                 )
             return
 
@@ -974,14 +992,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status == "pending":
             msg = (
                 "Your signup isn't complete yet. Use the link below to finish — "
-                "it expires in 15 minutes.\n\n"
+                "it expires in 24 hours.\n\n"
                 f"{signup_url}\n\n"
                 "After signing up, send /start again to begin."
             )
         else:
             msg = (
-                "Welcome to Liftwise — your AI gym assistant.\n\n"
-                "Complete your signup using the link below (expires in 15 minutes):\n\n"
+                "Welcome to Avenra — your AI gym assistant.\n\n"
+                "Complete your signup using the link below (expires in 24 hours):\n\n"
                 f"{signup_url}\n\n"
                 "After signing up, send /start again to get started."
             )

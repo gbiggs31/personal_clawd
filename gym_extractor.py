@@ -6,7 +6,7 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_MODEL = "claude-sonnet-4-20250514"
+EXTRACTION_MODEL = "claude-sonnet-4-6"
 
 EXTRACTION_SYSTEM = """You are a gym log parser. Extract structured workout data from natural language input.
 
@@ -129,8 +129,15 @@ def extract_workout(
 
     raw = _call_claude(client, EXTRACTION_SYSTEM, [{"role": "user", "content": user_content}])
 
+    # Strip markdown code fences Claude occasionally adds despite instructions
+    stripped = raw.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.split("\n", 1)[-1]  # remove opening fence line
+        stripped = stripped.rsplit("```", 1)[0]  # remove closing fence
+        stripped = stripped.strip()
+
     try:
-        return json.loads(raw)
+        return json.loads(stripped)
     except json.JSONDecodeError:
         logger.error(f"Extraction returned non-JSON: {raw[:300]}")
         return {"no_workout_data": True, "reason": "Parser returned invalid JSON — please try rephrasing."}
