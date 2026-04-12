@@ -263,6 +263,13 @@ class GymDB:
             "token":            token,
         })
 
+    def save_session_summary(self, session_id: str, summary: str, user_id: int):
+        self._patch(
+            "sessions",
+            {"session_id": f"eq.{session_id}", "telegram_user_id": f"eq.{user_id}"},
+            {"summary": summary},
+        )
+
     # ── Heartbeat ─────────────────────────────────────────────────────────────
 
     def write_heartbeat(self):

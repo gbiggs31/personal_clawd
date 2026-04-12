@@ -1192,6 +1192,9 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 None,
                 lambda: summarise_session(claude, session_sets, duration_mins, type_str, overall_note),
             )
+            await loop.run_in_executor(
+                None, lambda: sheets.save_session_summary(session_id, summary, int(user_id))
+            )
             await update.message.reply_text(summary)
     except Exception as e:
         logger.exception("Done command error")
