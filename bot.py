@@ -20,7 +20,7 @@ import anthropic
 from openai import AsyncOpenAI
 
 from gym_db import GymDB, format_history_for_prompt, format_cycle_for_prompt
-from gym_extractor import extract_workout, summarise_cycle, summarise_session, lookup_exercise, classify_session, extract_profile
+from gym_extractor import extract_workout, summarise_cycle, summarise_session, lookup_exercise, classify_session, extract_profile, EXTRACTION_MODEL
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -371,7 +371,8 @@ async def synthesise(query: str, claude_response: str, gpt_response: str) -> str
 # ── Gym logging core ───────────────────────────────────────────────────────────
 
 def _build_set_rows(
-    sets: list, session_id: str, date_str: str, message_id: int
+    sets: list, session_id: str, date_str: str, message_id: int,
+    raw_input: str = "", extraction_model: str = "",
 ) -> list[dict]:
     return [
         {
@@ -389,6 +390,8 @@ def _build_set_rows(
             "injury_body_part": s.get("injury_body_part", ""),
             "extras": s.get("extras"),
             "telegram_message_id": message_id,
+            "raw_input": raw_input,
+            "extraction_model": extraction_model,
         }
         for s in sets
     ]
@@ -470,7 +473,7 @@ async def _do_log(
     date_str = datetime.now().strftime("%Y-%m-%d")
     message_id = update.effective_message.message_id
     sets = result.get("sets", [])
-    rows = _build_set_rows(sets, session_id, date_str, message_id)
+    rows = _build_set_rows(sets, session_id, date_str, message_id, raw_input=text, extraction_model=EXTRACTION_MODEL)
     await loop.run_in_executor(None, lambda: sheets.append_sets(rows, int(user_id)))
 
     # Keep per-user exercise cache up to date so lookups work immediately after first log

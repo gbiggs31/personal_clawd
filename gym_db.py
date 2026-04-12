@@ -70,6 +70,8 @@ class GymDB:
                 "injury_body_part":    row.get("injury_body_part") or None,
                 "extras":              extras if isinstance(extras, dict) else None,
                 "telegram_message_id": row.get("telegram_message_id") or None,
+                "raw_input":           row.get("raw_input") or None,
+                "extraction_model":    row.get("extraction_model") or None,
             }
             self._post("sets", data)
 
