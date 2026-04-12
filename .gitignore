@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 conversation_history.json
+backup_db.sh
 
 # C extensions
 *.so
