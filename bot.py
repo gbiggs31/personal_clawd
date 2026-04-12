@@ -1227,6 +1227,24 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("Stats error")
         await update.message.reply_text(f"Error fetching stats: {e}")
 
+# ── Feedback ──────────────────────────────────────────────────────────────────
+
+async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("Usage: /feedback <your message>")
+        return
+    loop = asyncio.get_event_loop()
+    try:
+        sheets = await get_sheets()
+        await loop.run_in_executor(None, lambda: sheets.save_feedback(int(user_id), text))
+        await update.message.reply_text("Thanks — feedback received.")
+    except Exception as e:
+        logger.exception("Feedback command error")
+        await update.message.reply_text(f"Error saving feedback: {e}")
+
+
 # ── Profile command handlers ───────────────────────────────────────────────────
 
 async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1448,6 +1466,7 @@ def main():
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("profile", cmd_profile))
+    app.add_handler(CommandHandler("feedback", cmd_feedback))
     app.add_handler(CommandHandler("setprofile", cmd_setprofile))
 
     # Cycle commands

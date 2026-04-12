@@ -261,6 +261,14 @@ class GymDB:
             "token":            token,
         })
 
+    # ── Feedback ──────────────────────────────────────────────────────────────
+
+    def save_feedback(self, telegram_user_id: int, message: str):
+        self._post("feedback", {
+            "telegram_user_id": telegram_user_id,
+            "message":          message,
+        })
+
     # ── Profile ───────────────────────────────────────────────────────────────
 
     def update_profile(self, updates: dict, user_id: int):
