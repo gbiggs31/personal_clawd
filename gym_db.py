@@ -261,6 +261,16 @@ class GymDB:
             "token":            token,
         })
 
+    # ── Heartbeat ─────────────────────────────────────────────────────────────
+
+    def write_heartbeat(self):
+        """Upsert a single heartbeat row so the landing page can show bot status."""
+        self._post(
+            "heartbeat?on_conflict=id",
+            {"id": 1, "updated_at": datetime.utcnow().isoformat() + "Z"},
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+
     # ── Feedback ──────────────────────────────────────────────────────────────
 
     def save_feedback(self, telegram_user_id: int, message: str):

@@ -1437,6 +1437,17 @@ async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("End cycle error")
         await update.message.reply_text(f"Error ending cycle: {e}")
 
+# ── Heartbeat ─────────────────────────────────────────────────────────────────
+
+async def heartbeat_callback(context: ContextTypes.DEFAULT_TYPE):
+    """Write a heartbeat to Supabase every 5 minutes so the landing page can show bot status."""
+    try:
+        sheets = await get_sheets()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, sheets.write_heartbeat)
+    except Exception:
+        logger.exception("Heartbeat write failed")
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -1481,6 +1492,8 @@ def main():
         MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT, handle_edited_message)
     )
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    app.job_queue.run_repeating(heartbeat_callback, interval=300, first=10)
 
     logger.info("Bot is running. Press Ctrl+C to stop.")
     app.run_polling()

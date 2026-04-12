@@ -505,6 +505,28 @@
       }
     }
 
+    .bot-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .bot-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.4s ease;
+    }
+
+    .bot-status.online .bot-status-dot  { background: var(--accent); }
+    .bot-status.online .bot-status-text { color: var(--accent); }
+    .bot-status.offline .bot-status-dot  { background: #f87171; }
+    .bot-status.offline .bot-status-text { color: #f87171; }
+
     .mobile-cta {
       display: none;
     }
@@ -545,6 +567,10 @@
         <a class="nav-link" href="#why">Why Avenra</a>
         <a class="nav-link" href="#features">Features</a>
         <a class="nav-link" href="#register">Early access</a>
+        <div class="bot-status" id="bot-status">
+          <span class="bot-status-dot"></span>
+          <span class="bot-status-text">Bot</span>
+        </div>
         <a class="nav-cta" href="#register">Register interest</a>
       </div>
       <a href="#register" class="nav-cta mobile-cta">Register interest</a>
@@ -779,6 +805,30 @@
   </footer>
 
   <script>
+    const SUPABASE_URL  = 'https://hluyixpmyomnxsjtqhxb.supabase.co';
+    const SUPABASE_ANON = 'sb_publishable_xrl5q_lnzUS4bQ5AmHflWQ_b6LEUWej';
+
+    async function checkBotStatus() {
+      const el = document.getElementById('bot-status');
+      const label = el.querySelector('.bot-status-text');
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/heartbeat?id=eq.1&select=updated_at`, {
+          headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` }
+        });
+        const data = await res.json();
+        if (data.length && data[0].updated_at) {
+          const age = (Date.now() - new Date(data[0].updated_at)) / 1000;
+          const online = age < 600; // offline if no heartbeat in 10 mins
+          el.classList.toggle('online', online);
+          el.classList.toggle('offline', !online);
+          label.textContent = online ? 'Online' : 'Offline';
+        }
+      } catch { /* leave as neutral if request fails */ }
+    }
+
+    checkBotStatus();
+    setInterval(checkBotStatus, 60000);
+
     const form = document.getElementById('interest-form');
     const success = document.getElementById('form-success');
     const error = document.getElementById('form-error');
