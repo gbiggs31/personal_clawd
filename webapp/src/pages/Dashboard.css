@@ -17,11 +17,118 @@
   margin-bottom: 4px;
 }
 
+.dash-header-row {
+  margin-bottom: 20px;
+}
+
 .dash-count {
   color: var(--muted);
   font-size: 14px;
+  margin-top: 2px;
+}
+
+/* ── Filters ──────────────────────────────────────────────────── */
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-bottom: 24px;
 }
+
+.filter-row {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.filter-row::-webkit-scrollbar { display: none; }
+
+.type-pills {
+  display: flex;
+  gap: 6px;
+  width: max-content;
+  padding-bottom: 2px;
+}
+
+.type-pill {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.type-pill:hover:not(.active) {
+  border-color: rgba(255,255,255,0.18);
+  color: var(--text);
+}
+
+.type-pill.active {
+  background: rgba(141,247,192,0.1);
+  border-color: rgba(141,247,192,0.3);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.filter-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ex-search-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.ex-search {
+  width: 100%;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 8px 36px 8px 32px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ex-search:focus {
+  border-color: rgba(141,247,192,0.28);
+  background: rgba(255,255,255,0.05);
+}
+
+.ex-search::placeholder { color: var(--muted); opacity: 0.7; }
+
+.ex-search-clear {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: color 0.15s;
+}
+
+.ex-search-clear:hover { color: var(--text); }
 
 .dash-error {
   background: rgba(255, 92, 92, 0.1);

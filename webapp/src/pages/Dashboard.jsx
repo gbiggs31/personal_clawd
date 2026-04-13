@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
-// navigate is still used for session detail clicks
 import './Dashboard.css'
+
+const SESSION_TYPES = ['All', 'Push', 'Pull', 'Legs', 'Upper', 'Full Body', 'Other']
+const KNOWN_TYPES   = ['push', 'pull', 'legs', 'upper', 'full body']
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -13,8 +15,8 @@ function formatDate(dateStr) {
 function SessionCard({ session, exercises, onClick }) {
   const tags = []
   if (session.session_type) tags.push(session.session_type)
-  if (session.cardio_flag)   tags.push('Cardio')
-  if (session.abs_flag)      tags.push('Abs')
+  if (session.cardio_flag)  tags.push('Cardio')
+  if (session.abs_flag)     tags.push('Abs')
 
   return (
     <button className="session-card" onClick={onClick}>
@@ -45,10 +47,12 @@ function SessionCard({ session, exercises, onClick }) {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [sessions, setSessions] = useState([])
+  const [sessions, setSessions]       = useState([])
   const [exerciseMap, setExerciseMap] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState('')
+  const [typeFilter, setTypeFilter]   = useState('All')
+  const [exSearch, setExSearch]       = useState('')
 
   useEffect(() => {
     async function load() {
@@ -56,13 +60,12 @@ export default function Dashboard() {
         .from('sessions')
         .select('*')
         .order('date', { ascending: false })
-        .limit(200)
+        .limit(500)
 
       if (sErr) { setError(sErr.message); setLoading(false); return }
 
       setSessions(sessionData || [])
 
-      // Fetch exercises for all loaded sessions in one query
       if (sessionData && sessionData.length > 0) {
         const ids = sessionData.map(s => s.session_id)
         const { data: setData } = await supabase
@@ -86,13 +89,80 @@ export default function Dashboard() {
     load()
   }, [])
 
+  const filtered = useMemo(() => {
+    const query = exSearch.trim().toLowerCase()
+    return sessions.filter(s => {
+      // Session type filter
+      if (typeFilter !== 'All') {
+        const type = (s.session_type || '').toLowerCase()
+        if (typeFilter === 'Other') {
+          if (KNOWN_TYPES.includes(type)) return false
+        } else {
+          if (type !== typeFilter.toLowerCase()) return false
+        }
+      }
+      // Exercise search
+      if (query) {
+        const exes = exerciseMap[s.session_id] || []
+        if (!exes.some(e => e.toLowerCase().includes(query))) return false
+      }
+      return true
+    })
+  }, [sessions, exerciseMap, typeFilter, exSearch])
+
+  const isFiltered = typeFilter !== 'All' || exSearch.trim()
+
   if (loading) return <div className="loading-full">Loading sessions…</div>
 
   return (
     <div className="dashboard">
       <main className="dash-main">
-        <h1 className="dash-title">Sessions</h1>
-        <p className="dash-count">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</p>
+        <div className="dash-header-row">
+          <div>
+            <h1 className="dash-title">Sessions</h1>
+            <p className="dash-count">
+              {isFiltered
+                ? `${filtered.length} of ${sessions.length} session${sessions.length !== 1 ? 's' : ''}`
+                : `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="filters">
+          <div className="filter-row">
+            <div className="type-pills" role="group" aria-label="Filter by session type">
+              {SESSION_TYPES.map(t => (
+                <button
+                  key={t}
+                  className={`type-pill ${typeFilter === t ? 'active' : ''}`}
+                  onClick={() => setTypeFilter(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="filter-search-row">
+            <div className="ex-search-wrap">
+              <svg className="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M9.5 9.5L12.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              <input
+                className="ex-search"
+                type="text"
+                placeholder="Filter by exercise…"
+                value={exSearch}
+                onChange={e => setExSearch(e.target.value)}
+              />
+              {exSearch && (
+                <button className="ex-search-clear" onClick={() => setExSearch('')} aria-label="Clear">×</button>
+              )}
+            </div>
+          </div>
+        </div>
 
         {error && <div className="dash-error">{error}</div>}
 
@@ -100,8 +170,12 @@ export default function Dashboard() {
           <p className="dash-empty">No sessions yet. Log a workout via the bot to see it here.</p>
         )}
 
+        {sessions.length > 0 && filtered.length === 0 && (
+          <p className="dash-empty">No sessions match these filters.</p>
+        )}
+
         <div className="session-list">
-          {sessions.map(s => (
+          {filtered.map(s => (
             <SessionCard
               key={s.session_id}
               session={s}
