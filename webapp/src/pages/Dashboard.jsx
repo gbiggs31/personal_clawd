@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase.js'
+import { supabase } from '../utils/supabase.js'
 import './Dashboard.css'
 
 function formatDate(dateStr) {

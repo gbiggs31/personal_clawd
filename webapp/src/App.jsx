@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { supabase } from './lib/supabase.js'
+import { supabase } from './utils/supabase.js'
 import Login from './pages/Login.jsx'
 import AuthCallback from './pages/AuthCallback.jsx'
 import Dashboard from './pages/Dashboard.jsx'
