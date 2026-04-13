@@ -11,8 +11,9 @@
   max-width: 400px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 22px;
   padding: 40px 36px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.35);
 }
 
 .login-logo {
@@ -43,32 +44,35 @@
 }
 
 .login-form input {
-  background: var(--bg);
+  background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 14px;
   color: var(--text);
   padding: 12px 14px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.18s, background 0.18s;
 }
 
 .login-form input:focus {
-  border-color: var(--accent);
+  border-color: rgba(141,247,192,0.34);
+  background: rgba(255,255,255,0.05);
 }
 
 .login-form button {
   margin-top: 4px;
-  background: var(--accent);
-  color: #0d0d0d;
-  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent), #b7ffd7);
+  color: #07160f;
+  font-weight: 700;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   padding: 13px;
-  transition: background 0.15s;
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 8px 24px rgba(141,247,192,0.14);
 }
 
 .login-form button:hover:not(:disabled) {
-  background: var(--accent-dim);
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
 .login-form button:disabled {

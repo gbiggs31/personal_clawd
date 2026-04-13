@@ -1,20 +1,25 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #0d0d0d;
-  --surface:  #161616;
-  --border:   #2a2a2a;
-  --text:     #f0f0f0;
-  --muted:    #888;
-  --accent:   #c8f135;
-  --accent-dim: #a8d020;
-  --danger:   #ff5c5c;
-  --radius:   10px;
+  --bg:       #090b10;
+  --surface:  #11151d;
+  --surface-2: #151b25;
+  --border:   rgba(255,255,255,0.08);
+  --text:     #f5f7fb;
+  --muted:    #9ea7b7;
+  --accent:   #8df7c0;
+  --accent-dim: #6dd4a8;
+  --accent-2: #72b8ff;
+  --danger:   #f87171;
+  --radius:   14px;
   --font: 'Inter', system-ui, sans-serif;
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top right, rgba(114,184,255,0.1), transparent 28%),
+    radial-gradient(circle at top left, rgba(141,247,192,0.09), transparent 24%),
+    var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
