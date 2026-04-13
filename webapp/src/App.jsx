@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { supabase } from './utils/supabase.js'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
@@ -24,23 +25,26 @@ function RequireAuth({ children }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
+    <>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
-        <Route path="/" element={
-          <RequireAuth><Layout><Dashboard /></Layout></RequireAuth>
-        } />
-        <Route path="/chat" element={
-          <RequireAuth><Layout><Chat /></Layout></RequireAuth>
-        } />
-        <Route path="/session/:sessionId" element={
-          <RequireAuth><SessionDetail /></RequireAuth>
-        } />
+          <Route path="/" element={
+            <RequireAuth><Layout><Dashboard /></Layout></RequireAuth>
+          } />
+          <Route path="/chat" element={
+            <RequireAuth><Layout><Chat /></Layout></RequireAuth>
+          } />
+          <Route path="/session/:sessionId" element={
+            <RequireAuth><SessionDetail /></RequireAuth>
+          } />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+      <Analytics />
+    </>
   )
 }
