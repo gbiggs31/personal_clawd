@@ -25,8 +25,12 @@
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.04em;
-  color: var(--accent);
+  color: var(--text);
   flex-shrink: 0;
+}
+
+.layout-logo span {
+  color: var(--accent);
 }
 
 /* ── Header tabs (desktop) ──────────────────────────────────── */

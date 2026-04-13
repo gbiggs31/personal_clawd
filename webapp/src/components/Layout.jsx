@@ -17,7 +17,7 @@ export default function Layout({ children }) {
   return (
     <div className="layout">
       <header className="layout-header">
-        <div className="layout-logo">Avenra</div>
+        <div className="layout-logo">Ave<span>nra</span></div>
 
         <nav className="header-tabs" aria-label="Main navigation">
           <Link to="/"     className={`header-tab ${isSessions ? 'active' : ''}`}>Sessions</Link>
