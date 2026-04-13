@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 .env.local
+
+# Override root .gitignore which excludes lib/
+!src/lib/
