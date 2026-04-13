@@ -491,7 +491,41 @@
   display: block;
 }
 
+/* ── Today chat button ────────────────────────────────────────── */
+
+.today-chat-btn {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--accent), #b7ffd7);
+  color: #07160f;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 999px;
+  padding: 8px 16px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  min-height: 36px;
+  line-height: 20px;
+}
+
+.today-chat-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.plan-days-since {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 12px;
+  opacity: 0.7;
+}
+
 /* ── Exercise history panel ───────────────────────────────────── */
+
+.history-overlay {
+  display: none;
+}
 
 .history-panel {
   width: 280px;
@@ -672,20 +706,71 @@
     flex-direction: column;
   }
 
-  .primary-btn {
+  .today-chat-btn {
     width: 100%;
     text-align: center;
-    justify-content: center;
   }
 
+  /* Larger touch targets for filter pills */
+  .type-pill {
+    padding: 8px 14px;
+    min-height: 40px;
+  }
+
+  .highlight-exercise {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+
+  .exercise-chip {
+    padding: 4px 11px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* History panel as a bottom-sheet overlay on mobile */
+  .history-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 40;
+    animation: overlay-in 0.18s ease;
+  }
+
+  @keyframes overlay-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* history-panel renders inside the fragment after overlay;
+     on mobile it sits above the overlay */
   .content-layout {
     flex-direction: column;
   }
 
   .history-panel {
+    position: fixed;
+    bottom: 60px; /* above mobile tab bar */
+    left: 0;
+    right: 0;
     width: 100%;
-    position: static;
-    max-height: none;
+    max-height: 72dvh;
+    border-radius: 20px 20px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    overflow-y: auto;
+    z-index: 41;
+    animation: sheet-up 0.22s cubic-bezier(0.34, 1.26, 0.64, 1);
+  }
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
   }
 
   .current-session-bar {
