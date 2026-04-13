@@ -1,42 +1,6 @@
 .dashboard {
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-}
-
-.dash-header {
-  position: sticky;
-  top: 0;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 10;
-}
-
-.dash-logo {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: -0.3px;
-}
-
-.signout-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13px;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.signout-btn:hover {
-  border-color: var(--text);
-  color: var(--text);
 }
 
 .dash-main {

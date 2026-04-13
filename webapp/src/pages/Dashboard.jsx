@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+// navigate is still used for session detail clicks
 import './Dashboard.css'
 
 function formatDate(dateStr) {
@@ -85,22 +86,12 @@ export default function Dashboard() {
     load()
   }, [])
 
-  async function handleSignOut() {
-    await supabase.auth.signOut()
-    navigate('/login')
-  }
-
   if (loading) return <div className="loading-full">Loading sessions…</div>
 
   return (
     <div className="dashboard">
-      <header className="dash-header">
-        <div className="dash-logo">Avenra</div>
-        <button className="signout-btn" onClick={handleSignOut}>Sign out</button>
-      </header>
-
       <main className="dash-main">
-        <h1 className="dash-title">Training log</h1>
+        <h1 className="dash-title">Sessions</h1>
         <p className="dash-count">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</p>
 
         {error && <div className="dash-error">{error}</div>}
