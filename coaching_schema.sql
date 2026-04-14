@@ -126,21 +126,25 @@ ALTER TABLE program_change_log  ENABLE ROW LEVEL SECURITY;
 -- Permissive policies: authenticated users may only see/modify their own rows.
 -- The service key is exempt from all RLS checks.
 
-CREATE POLICY IF NOT EXISTS program_state_authenticated
+DROP POLICY IF EXISTS program_state_authenticated      ON program_state;
+DROP POLICY IF EXISTS program_updates_authenticated    ON program_updates;
+DROP POLICY IF EXISTS program_change_log_authenticated ON program_change_log;
+
+CREATE POLICY program_state_authenticated
     ON program_state
     FOR ALL
     TO authenticated
     USING (true)
     WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS program_updates_authenticated
+CREATE POLICY program_updates_authenticated
     ON program_updates
     FOR ALL
     TO authenticated
     USING (true)
     WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS program_change_log_authenticated
+CREATE POLICY program_change_log_authenticated
     ON program_change_log
     FOR ALL
     TO authenticated
