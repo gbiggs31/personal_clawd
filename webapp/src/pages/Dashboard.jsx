@@ -116,60 +116,6 @@ function SessionCard({ session, exercises, topHighlights, expandedSummaryIds, to
   )
 }
 
-function TodaySessionCard({ plan, loading }) {
-  const content = loading ? (
-    <div className="today-session-skeleton">Generating today's plan…</div>
-  ) : plan ? (
-    <>
-      <div className="today-session-header">
-        <div>
-          <div className="eyebrow">Today</div>
-          <h2 className="today-session-title">{plan.workoutType}</h2>
-          <div className="today-session-meta">
-            {plan.focus && <span>{plan.focus}</span>}
-            {plan.estimatedDurationMin && <span> · ~{plan.estimatedDurationMin} min</span>}
-          </div>
-        </div>
-        <Link to="/chat" className="today-chat-btn">Ask Avenra</Link>
-      </div>
-
-      {plan.exercises?.length > 0 && (
-        <div className="today-exercise-list">
-          {plan.exercises.map((ex, i) => (
-            <div key={`${ex.name}-${i}`} className={`today-exercise-row${ex.isPriority ? ' priority' : ''}`}>
-              <div className="today-exercise-name-row">
-                <span className="today-exercise-name">{ex.name}</span>
-                {ex.isPriority && <span className="today-priority-badge">Priority</span>}
-              </div>
-              <div className="today-exercise-prescription">
-                {ex.weightKg != null ? `${ex.weightKg}kg` : 'BW'}
-                {' · '}
-                {ex.sets} sets
-                {' · '}
-                {ex.repTargets?.join(' / ')}
-              </div>
-              {ex.note && <div className="today-exercise-note">{ex.note}</div>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {plan.coachingNotes?.length > 0 && (
-        <div className="today-coaching-box">
-          <div className="today-coaching-title">Coaching notes</div>
-          <ul className="today-coaching-list">
-            {plan.coachingNotes.map((note, i) => <li key={i}>{note}</li>)}
-          </ul>
-        </div>
-      )}
-    </>
-  ) : null
-
-  if (!loading && !plan) return null
-
-  return <section className="today-session-card">{content}</section>
-}
-
 function StatsStrip({ sessions }) {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
@@ -257,8 +203,6 @@ export default function Dashboard() {
   const [sortBy, setSortBy]               = useState('Recent')
   const [expandedIds, setExpandedIds]     = useState(new Set())
   const [selectedExercise, setSelected]   = useState('')  // normalized key
-  const [sessionPlan, setSessionPlan]     = useState(null)
-  const [planLoading, setPlanLoading]     = useState(true)
 
   useEffect(() => {
     async function load() {
@@ -296,34 +240,6 @@ export default function Dashboard() {
       setLoading(false)
     }
     load()
-  }, [])
-
-  // Fetch today's AI-generated session plan (cached in sessionStorage by date)
-  useEffect(() => {
-    async function loadPlan() {
-      const today = new Date().toISOString().split('T')[0]
-      const cacheKey = `avenra-plan-${today}`
-      const cached = sessionStorage.getItem(cacheKey)
-      if (cached) {
-        try { setSessionPlan(JSON.parse(cached)); setPlanLoading(false); return } catch {}
-      }
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) { setPlanLoading(false); return }
-        const res = await fetch('/api/today-plan', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        })
-        if (!res.ok) throw new Error(await res.text())
-        const plan = await res.json()
-        setSessionPlan(plan)
-        sessionStorage.setItem(cacheKey, JSON.stringify(plan))
-      } catch (err) {
-        console.error('Today plan:', err)
-      } finally {
-        setPlanLoading(false)
-      }
-    }
-    loadPlan()
   }, [])
 
   // Group sets by session
@@ -463,15 +379,17 @@ export default function Dashboard() {
     <div className="dashboard">
       <main className="dash-main">
         <div className="dash-header-row">
-          <h1 className="dash-title">Training</h1>
-          <p className="dash-count">
-            {isFiltered
-              ? `${filtered.length} of ${sessions.length} sessions`
-              : `${sessions.length} sessions`}
-          </p>
+          <div>
+            <h1 className="dash-title">Training log</h1>
+            <p className="dash-count">
+              {isFiltered
+                ? `${filtered.length} of ${sessions.length} sessions`
+                : `${sessions.length} sessions`}
+            </p>
+          </div>
+          <Link to="/chat" className="log-chat-btn">Ask Avenra</Link>
         </div>
 
-        <TodaySessionCard plan={sessionPlan} loading={planLoading} />
         {sessions.length > 0 && <StatsStrip sessions={sessions} />}
 
         {/* Filters */}

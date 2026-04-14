@@ -11,6 +11,10 @@
 }
 
 .dash-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
@@ -26,7 +30,26 @@
   font-size: 13px;
 }
 
-/* ── Today session card ──────────────────────────────────────── */
+.log-chat-btn {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--accent), #b7ffd7);
+  color: #07160f;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 999px;
+  padding: 8px 16px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.log-chat-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+/* ── Eyebrow label ───────────────────────────────────────────── */
 
 .eyebrow {
   font-size: 11px;
@@ -35,126 +58,6 @@
   text-transform: uppercase;
   color: var(--accent);
   margin-bottom: 4px;
-}
-
-.today-session-card {
-  background: linear-gradient(180deg, rgba(141,247,192,0.08), rgba(255,255,255,0.02));
-  border: 1px solid rgba(141,247,192,0.16);
-  border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 18px;
-}
-
-.today-session-skeleton {
-  color: var(--muted);
-  font-size: 14px;
-  padding: 8px 0;
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-
-.today-session-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.today-session-title {
-  font-size: 22px;
-  font-weight: 720;
-  letter-spacing: -0.3px;
-  margin-bottom: 4px;
-}
-
-.today-session-meta {
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.today-exercise-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.today-exercise-row {
-  background: rgba(255,255,255,0.035);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px 14px;
-}
-
-.today-exercise-row.priority {
-  border-color: rgba(141,247,192,0.28);
-  background: rgba(141,247,192,0.05);
-}
-
-.today-exercise-name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
-}
-
-.today-exercise-name {
-  font-size: 15px;
-  font-weight: 680;
-  color: var(--text);
-}
-
-.today-priority-badge {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-  background: rgba(141,247,192,0.1);
-  border: 1px solid rgba(141,247,192,0.18);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-
-.today-exercise-prescription {
-  font-size: 14px;
-  color: #d4d8df;
-  line-height: 1.5;
-}
-
-.today-exercise-note {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.today-coaching-box {
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 12px;
-}
-
-.today-coaching-title {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 8px;
-}
-
-.today-coaching-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #d2d6dd;
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 /* ── Stats strip ─────────────────────────────────────────────── */
@@ -509,35 +412,6 @@
   display: block;
 }
 
-/* ── Today chat button ────────────────────────────────────────── */
-
-.today-chat-btn {
-  display: inline-block;
-  background: linear-gradient(135deg, var(--accent), #b7ffd7);
-  color: #07160f;
-  font-weight: 700;
-  font-size: 13px;
-  border-radius: 999px;
-  padding: 8px 16px;
-  text-decoration: none;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: opacity 0.15s, transform 0.15s;
-  min-height: 36px;
-  line-height: 20px;
-}
-
-.today-chat-btn:hover {
-  opacity: 0.88;
-  transform: translateY(-1px);
-}
-
-.plan-days-since {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 12px;
-  opacity: 0.7;
-}
 
 /* ── Exercise history panel ───────────────────────────────────── */
 
@@ -720,14 +594,6 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .today-plan-header {
-    flex-direction: column;
-  }
-
-  .today-chat-btn {
-    width: 100%;
-    text-align: center;
-  }
 
   /* Larger touch targets for filter pills */
   .type-pill {

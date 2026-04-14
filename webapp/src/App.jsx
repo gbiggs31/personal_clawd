@@ -5,6 +5,7 @@ import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 import AuthCallback from './pages/AuthCallback.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Today from './pages/Today.jsx'
 import SessionDetail from './pages/SessionDetail.jsx'
 import Chat from './pages/Chat.jsx'
 
@@ -31,6 +32,9 @@ export default function App() {
 
         <Route path="/" element={
           <RequireAuth><Layout><Dashboard /></Layout></RequireAuth>
+        } />
+        <Route path="/today" element={
+          <RequireAuth><Layout><Today /></Layout></RequireAuth>
         } />
         <Route path="/chat" element={
           <RequireAuth><Layout><Chat /></Layout></RequireAuth>
