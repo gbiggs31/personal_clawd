@@ -26,23 +26,7 @@
   font-size: 13px;
 }
 
-/* ── Today plan card ─────────────────────────────────────────── */
-
-.today-plan-card {
-  background: linear-gradient(160deg, rgba(141,247,192,0.07), rgba(114,184,255,0.03));
-  border: 1px solid rgba(141,247,192,0.16);
-  border-radius: 18px;
-  padding: 20px;
-  margin-bottom: 16px;
-}
-
-.today-plan-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
+/* ── Today session card ──────────────────────────────────────── */
 
 .eyebrow {
   font-size: 11px;
@@ -53,90 +37,124 @@
   margin-bottom: 4px;
 }
 
-.today-plan-title {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #fff;
+.today-session-card {
+  background: linear-gradient(180deg, rgba(141,247,192,0.08), rgba(255,255,255,0.02));
+  border: 1px solid rgba(141,247,192,0.16);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 18px;
 }
 
-.primary-btn {
-  background: linear-gradient(135deg, var(--accent), #b7ffd7);
-  color: #07160f;
-  font-weight: 700;
-  font-size: 13px;
-  border: none;
-  border-radius: 999px;
-  padding: 8px 16px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.15s, transform 0.15s;
-  flex-shrink: 0;
+.today-session-skeleton {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 8px 0;
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
-.primary-btn:hover {
-  opacity: 0.88;
-  transform: translateY(-1px);
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
 }
 
-.today-plan-body {
+.today-session-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.today-session-title {
+  font-size: 22px;
+  font-weight: 720;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+
+.today-session-meta {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.today-exercise-list {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.today-exercise-row {
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.today-exercise-row.priority {
+  border-color: rgba(141,247,192,0.28);
+  background: rgba(141,247,192,0.05);
+}
+
+.today-exercise-name-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
 }
 
-.plan-kicker {
-  font-size: 13px;
-  font-weight: 600;
+.today-exercise-name {
+  font-size: 15px;
+  font-weight: 680;
+  color: var(--text);
+}
+
+.today-priority-badge {
+  font-size: 11px;
+  font-weight: 700;
   color: var(--accent);
-  margin-bottom: 2px;
+  background: rgba(141,247,192,0.1);
+  border: 1px solid rgba(141,247,192,0.18);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
-.plan-note {
+.today-exercise-prescription {
   font-size: 14px;
+  color: #d4d8df;
+  line-height: 1.5;
+}
+
+.today-exercise-note {
+  margin-top: 4px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
-  margin-bottom: 12px;
 }
 
-.plan-targets {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.today-coaching-box {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 12px;
 }
 
-.plan-target {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+.today-coaching-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
 }
 
-.plan-target-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  min-width: 140px;
-}
-
-.plan-target-detail {
+.today-coaching-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #d2d6dd;
   font-size: 13px;
-  color: var(--muted);
-}
-
-.plan-row {
-  display: flex;
-  gap: 12px;
-  font-size: 14px;
-}
-
-.plan-label {
-  color: var(--muted);
-  min-width: 64px;
-}
-
-.plan-value {
-  color: var(--text);
-  font-weight: 500;
+  line-height: 1.7;
 }
 
 /* ── Stats strip ─────────────────────────────────────────────── */

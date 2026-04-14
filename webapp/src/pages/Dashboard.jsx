@@ -7,10 +7,6 @@ import {
   getTopSet,
   compareTopSets,
   formatWeightRep,
-  inferNextSessionType,
-  getTopExercisesForType,
-  getReadinessNote,
-  daysSince,
   daysBetween,
 } from '../utils/training.js'
 import './Dashboard.css'
@@ -120,39 +116,58 @@ function SessionCard({ session, exercises, topHighlights, expandedSummaryIds, to
   )
 }
 
-function TodayCard({ recommendation }) {
-  const { sessionType, note, targets, daysSinceLast } = recommendation
-
-  return (
-    <section className="today-plan-card">
-      <div className="today-plan-header">
+function TodaySessionCard({ plan, loading }) {
+  const content = loading ? (
+    <div className="today-session-skeleton">Generating today's plan…</div>
+  ) : plan ? (
+    <>
+      <div className="today-session-header">
         <div>
           <div className="eyebrow">Today</div>
-          <h2 className="today-plan-title">{sessionType} day</h2>
+          <h2 className="today-session-title">{plan.workoutType}</h2>
+          <div className="today-session-meta">
+            {plan.focus && <span>{plan.focus}</span>}
+            {plan.estimatedDurationMin && <span> · ~{plan.estimatedDurationMin} min</span>}
+          </div>
         </div>
         <Link to="/chat" className="today-chat-btn">Ask Avenra</Link>
       </div>
 
-      <p className="plan-note">{note}</p>
-
-      {targets.length > 0 && (
-        <div className="plan-targets">
-          {targets.map(t => (
-            <div key={t.exercise} className="plan-target">
-              <div className="plan-target-name">{displayExercise(t.exercise)}</div>
-              <div className="plan-target-detail">{t.target}</div>
+      {plan.exercises?.length > 0 && (
+        <div className="today-exercise-list">
+          {plan.exercises.map((ex, i) => (
+            <div key={`${ex.name}-${i}`} className={`today-exercise-row${ex.isPriority ? ' priority' : ''}`}>
+              <div className="today-exercise-name-row">
+                <span className="today-exercise-name">{ex.name}</span>
+                {ex.isPriority && <span className="today-priority-badge">Priority</span>}
+              </div>
+              <div className="today-exercise-prescription">
+                {ex.weightKg != null ? `${ex.weightKg}kg` : 'BW'}
+                {' · '}
+                {ex.sets} sets
+                {' · '}
+                {ex.repTargets?.join(' / ')}
+              </div>
+              {ex.note && <div className="today-exercise-note">{ex.note}</div>}
             </div>
           ))}
         </div>
       )}
 
-      {daysSinceLast != null && (
-        <p className="plan-days-since">
-          Last session {daysSinceLast === 0 ? 'today' : daysSinceLast === 1 ? 'yesterday' : `${daysSinceLast} days ago`}
-        </p>
+      {plan.coachingNotes?.length > 0 && (
+        <div className="today-coaching-box">
+          <div className="today-coaching-title">Coaching notes</div>
+          <ul className="today-coaching-list">
+            {plan.coachingNotes.map((note, i) => <li key={i}>{note}</li>)}
+          </ul>
+        </div>
       )}
-    </section>
-  )
+    </>
+  ) : null
+
+  if (!loading && !plan) return null
+
+  return <section className="today-session-card">{content}</section>
 }
 
 function StatsStrip({ sessions }) {
@@ -242,6 +257,8 @@ export default function Dashboard() {
   const [sortBy, setSortBy]               = useState('Recent')
   const [expandedIds, setExpandedIds]     = useState(new Set())
   const [selectedExercise, setSelected]   = useState('')  // normalized key
+  const [sessionPlan, setSessionPlan]     = useState(null)
+  const [planLoading, setPlanLoading]     = useState(true)
 
   useEffect(() => {
     async function load() {
@@ -279,6 +296,34 @@ export default function Dashboard() {
       setLoading(false)
     }
     load()
+  }, [])
+
+  // Fetch today's AI-generated session plan (cached in sessionStorage by date)
+  useEffect(() => {
+    async function loadPlan() {
+      const today = new Date().toISOString().split('T')[0]
+      const cacheKey = `avenra-plan-${today}`
+      const cached = sessionStorage.getItem(cacheKey)
+      if (cached) {
+        try { setSessionPlan(JSON.parse(cached)); setPlanLoading(false); return } catch {}
+      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) { setPlanLoading(false); return }
+        const res = await fetch('/api/today-plan', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+        if (!res.ok) throw new Error(await res.text())
+        const plan = await res.json()
+        setSessionPlan(plan)
+        sessionStorage.setItem(cacheKey, JSON.stringify(plan))
+      } catch (err) {
+        console.error('Today plan:', err)
+      } finally {
+        setPlanLoading(false)
+      }
+    }
+    loadPlan()
   }, [])
 
   // Group sets by session
@@ -369,43 +414,6 @@ export default function Dashboard() {
     return lookup
   }, [sessions, setsBySession])
 
-  // Coaching recommendation — uses actual user exercises, not hardcoded names
-  const recommendation = useMemo(() => {
-    const sessionType   = inferNextSessionType(sessions.slice(0, 8))
-    const latestSession = sessions[0]
-    const daysAgo       = daysSince(latestSession?.date)
-
-    const topExercises = getTopExercisesForType(sessionType, sessions, setsBySession)
-
-    const targets = topExercises.map(normEx => {
-      const history = exerciseHistoryLookup[normEx] || []
-      const latest  = history[0]
-      if (!latest?.topSet) return { exercise: normEx, target: 'Beat your last session' }
-      const nextReps = (latest.topSet.reps ?? 0) + 1
-      return {
-        exercise: normEx,
-        target: latest.topSet.weight_kg != null
-          ? `${latest.topSet.weight_kg}kg × ${nextReps}`
-          : `BW × ${nextReps}`,
-      }
-    })
-
-    // Fallback if no history for this session type yet
-    if (!targets.length) {
-      targets.push(
-        { exercise: 'main lift',      target: 'Beat last week by 1 rep' },
-        { exercise: 'secondary lift', target: 'Match or beat last session' },
-      )
-    }
-
-    return {
-      sessionType,
-      note: getReadinessNote(latestSession, daysAgo),
-      targets,
-      daysSinceLast: daysAgo,
-    }
-  }, [sessions, setsBySession, exerciseHistoryLookup])
-
   // Filtered + sorted session list
   const filtered = useMemo(() => {
     const query = exSearch.trim().toLowerCase()
@@ -463,7 +471,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {sessions.length > 0 && <TodayCard recommendation={recommendation} />}
+        <TodaySessionCard plan={sessionPlan} loading={planLoading} />
         {sessions.length > 0 && <StatsStrip sessions={sessions} />}
 
         {/* Filters */}
