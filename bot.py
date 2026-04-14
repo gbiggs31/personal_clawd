@@ -21,6 +21,7 @@ from openai import AsyncOpenAI
 
 from gym_db import GymDB, format_history_for_prompt, format_cycle_for_prompt
 from gym_extractor import extract_workout, summarise_cycle, summarise_session, lookup_exercise, classify_session, extract_profile, EXTRACTION_MODEL
+from coaching_pipeline import process_conversation as _pipeline_process
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -754,9 +755,67 @@ async def handle_gym_query(
         append_to_history(user_id, "user", query)
         append_to_history(user_id, "assistant", reply)
         await update.effective_message.reply_text(reply)
+
+        # Fire coaching update pipeline asynchronously — doesn't block reply
+        full_history = get_user_history(user_id)
+        if len(full_history) >= 4:
+            asyncio.create_task(_trigger_coaching_pipeline(user_id, full_history[-12:]))
     except Exception as e:
         logger.exception("Gym query error")
         await update.effective_message.reply_text(f"Error: {e}")
+
+
+async def _trigger_coaching_pipeline(user_id: str, messages: list[dict]):
+    """Run coaching update pipeline in background — never blocks or raises."""
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: _pipeline_process(int(user_id), messages)
+        )
+        if result.get("updated"):
+            logger.info(f"Coaching pipeline applied {result.get('applied_count', 0)} update(s) for user {user_id}")
+    except Exception:
+        logger.exception(f"Background coaching pipeline failed for user {user_id}")
+
+
+async def cmd_programstate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug: show current canonical program state for user."""
+    user_id = str(update.effective_user.id)
+    from coaching_pipeline import get_debug_info
+    loop = asyncio.get_event_loop()
+    info = await loop.run_in_executor(None, lambda: get_debug_info(int(user_id)))
+    state = info.get("canonical_state", {})
+    rules = state.get("active_rules", [])
+    constraints = state.get("active_constraints", [])
+    updates = state.get("coaching_updates", [])
+    meta = state.get("state_metadata", {})
+
+    lines = [f"*Program State* (v{meta.get('version', 0)})", ""]
+    if rules:
+        lines.append("*Active Rules:*")
+        for r in rules:
+            scope = f" [{r.get('applicability_type', '')}]"
+            wt = f" ({r.get('workout_type')})" if r.get("workout_type") else ""
+            lines.append(f"• {r['text']}{wt}{scope}")
+        lines.append("")
+    if constraints:
+        lines.append("*Active Constraints:*")
+        for c in constraints:
+            while_str = f" — while: {c.get('applies_while')}" if c.get("applies_while") else ""
+            lines.append(f"• {c['text']}{while_str}")
+        lines.append("")
+    if updates:
+        lines.append("*Other Updates:*")
+        for u in updates:
+            lines.append(f"• [{u.get('update_type')}] {u.get('title')}")
+        lines.append("")
+    if not rules and not constraints and not updates:
+        lines.append("_No coaching updates on file._")
+
+    lines.append(f"_Last rebuilt: {meta.get('last_rebuilt_at', 'never')}_")
+    await update.effective_message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 
 # ── Telegram message handlers ──────────────────────────────────────────────────
 
@@ -1498,6 +1557,7 @@ def main():
     app.add_handler(CommandHandler("cancelcycle", cmd_cancelcycle))
     app.add_handler(CommandHandler("cycle", cmd_cycle))
     app.add_handler(CommandHandler("endcycle", cmd_endcycle))
+    app.add_handler(CommandHandler("programstate", cmd_programstate))
 
     # Message handlers — edit handler must be registered before the catch-all
     app.add_handler(

@@ -91,8 +91,51 @@ export default async function handler(req, res) {
     supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
   ])
 
+  // Fetch canonical coaching state assembled by the Python pipeline
+  const { data: programStateRow } = await supabase
+    .from('program_state')
+    .select('state_json')
+    .eq('telegram_user_id', uid)
+    .single()
+
+  const canonicalState = programStateRow?.state_json || {}
+
   const historyStr = formatHistory(sets || [], [...(sessions || [])].reverse())
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
+
+  // Build the coaching rules/constraints section from canonical state
+  const canonicalSection = (() => {
+    const rules = canonicalState.active_rules || []
+    const constraints = canonicalState.active_constraints || []
+    const updates = canonicalState.coaching_updates || []
+    const priorities = canonicalState.priorities || []
+    if (!rules.length && !constraints.length && !updates.length) return ''
+
+    const lines = ['=== ACTIVE COACHING RULES & CONSTRAINTS ===']
+    if (rules.length) {
+      lines.push('Rules:')
+      rules.forEach(r => {
+        const wt = r.workout_type ? ` [${r.workout_type}]` : ''
+        const scope = r.applicability_type === 'durable' ? '' : ` (${r.applicability_type})`
+        lines.push(`  - ${r.text}${wt}${scope}`)
+      })
+    }
+    if (constraints.length) {
+      lines.push('Constraints:')
+      constraints.forEach(c => {
+        const when = c.applies_while ? ` — applies while: ${c.applies_while}` : ''
+        lines.push(`  - ${c.text}${when}`)
+      })
+    }
+    if (updates.length) {
+      lines.push('Other coaching updates:')
+      updates.forEach(u => lines.push(`  - [${u.update_type}] ${u.description}`))
+    }
+    if (priorities.length) {
+      lines.push(`Priorities: ${priorities.join(', ')}`)
+    }
+    return lines.join('\n')
+  })()
 
   const systemPrompt = `You are Avenra, an AI strength-training coach. Generate a training plan for today based on the user's recent history.
 
@@ -101,12 +144,13 @@ ${historyStr}
 
 Today: ${today}
 
-Rules:
+${canonicalSection ? canonicalSection + '\n\n' : ''}Rules:
 - Infer the logical next session type from the PPL pattern in their history (or their active cycle if present)
 - Target weights should reflect small progressive overload on what they've recently done
 - List 4–6 exercises. The priority lift should be the main compound for the day
 - Keep coaching notes specific and actionable (not generic)
 - If there are recent injury flags, address them
+- Follow any active coaching rules and constraints exactly — these override generic defaults
 
 Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
 ${SCHEMA}`
