@@ -640,7 +640,7 @@ async def handle_exercise_lookup(
         )
 
         if not exercise_sets:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 f"No history found for '{matched_exercise}'."
             )
             return
@@ -655,10 +655,10 @@ async def handle_exercise_lookup(
             None,
             lambda: lookup_exercise(claude, matched_exercise, history_text, target_context),
         )
-        await update.message.reply_text(reply)
+        await update.effective_message.reply_text(reply)
     except Exception as e:
         logger.exception("Exercise lookup error")
-        await update.message.reply_text(f"Error fetching exercise data: {e}")
+        await update.effective_message.reply_text(f"Error fetching exercise data: {e}")
 
 # ── Gym topic routing ──────────────────────────────────────────────────────────
 
@@ -678,7 +678,7 @@ async def handle_gym_topic_message(
             {"role": "user", "content": text},
             {"role": "assistant", "content": reply},
         ]
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             reply + "\n\n_/confirmcycle to save • /cancelcycle to discard_",
             parse_mode="Markdown",
         )
@@ -757,19 +757,19 @@ async def handle_gym_query(
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Route messages: gym topic → gym prefix → ensemble → normal Claude."""
     user_id = str(update.effective_user.id)
-    user_message = update.message.text
+    user_message = update.effective_message.text
     username = update.effective_user.first_name or "User"
 
     logger.info(f"Message from {username} ({user_id}): {user_message[:50]}...")
 
     # ── Allowlist gate ─────────────────────────────────────────────────────────
     if not await is_allowlisted(user_id):
-        await update.message.reply_text(_PRIVATE_BETA_MSG)
+        await update.effective_message.reply_text(_PRIVATE_BETA_MSG)
         return
 
     # ── Auth gate ──────────────────────────────────────────────────────────────
     if not await is_user_active(user_id):
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "You need to sign up before using Avenra.\n"
             "Send /start to get your signup link."
         )
@@ -777,7 +777,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Rate limit ─────────────────────────────────────────────────────────────
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -805,7 +805,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if query:
             await handle_gym_query(update, context, user_id, query)
         else:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Usage: `gym: your question`", parse_mode="Markdown"
             )
         return
@@ -814,12 +814,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_message.lower().startswith(ENSEMBLE_TRIGGER):
         query = user_message[len(ENSEMBLE_TRIGGER):].strip()
         if not query:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 f'Usage: `{ENSEMBLE_TRIGGER} your question here`', parse_mode="Markdown"
             )
             return
 
-        await update.message.reply_text("⏳ Querying Claude and GPT-4o in parallel...")
+        await update.effective_message.reply_text("⏳ Querying Claude and GPT-4o in parallel...")
 
         try:
             results = await asyncio.gather(
@@ -835,12 +835,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     responses[model_name] = response_text
 
             for model_name, response_text in responses.items():
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     f"*{model_name}:*\n{response_text}", parse_mode="Markdown"
                 )
 
             if errors:
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     f"⚠️ Some models failed: {'; '.join(errors)}"
                 )
 
@@ -851,17 +851,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 synthesis = await synthesise(
                     query, responses.get("Claude", ""), responses.get("GPT-4o", "")
                 )
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     f"*🔀 Synthesis:*\n{synthesis}", parse_mode="Markdown"
                 )
             elif len(responses) == 1:
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     "⚠️ Only one model responded — skipping synthesis."
                 )
 
         except Exception as e:
             logger.exception("Ensemble error")
-            await update.message.reply_text(f"Ensemble error: {e}")
+            await update.effective_message.reply_text(f"Ensemble error: {e}")
         return
 
     # ── Normal GPT-4o path ─────────────────────────────────────────────────────
@@ -869,10 +869,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await query_gpt(user_id, user_message)
         append_to_history(user_id, "user", user_message)
         append_to_history(user_id, "assistant", reply)
-        await update.message.reply_text(reply)
+        await update.effective_message.reply_text(reply)
     except Exception as e:
         logger.exception("Error querying GPT-4o")
-        await update.message.reply_text(f"Error: {e}")
+        await update.effective_message.reply_text(f"Error: {e}")
 
 
 async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -956,7 +956,7 @@ async def _send_onboarding(update: Update):
         ),
     ]
     for msg in messages:
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await update.effective_message.reply_text(msg, parse_mode="Markdown")
 
 # ── Standard command handlers ──────────────────────────────────────────────────
 
@@ -968,7 +968,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheets = await get_sheets()
 
         if not await is_allowlisted(user_id):
-            await update.message.reply_text(_PRIVATE_BETA_MSG)
+            await update.effective_message.reply_text(_PRIVATE_BETA_MSG)
             return
 
         status = await loop.run_in_executor(None, lambda: sheets.get_user_status(int(user_id)))
@@ -979,7 +979,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if first_time:
                 await _send_onboarding(update)
             else:
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     "Welcome back to Avenra! Send /guide for the full command reference."
                 )
             return
@@ -1006,11 +1006,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{signup_url}\n\n"
                 "After signing up, send /start again to get started."
             )
-        await update.message.reply_text(msg)
+        await update.effective_message.reply_text(msg)
 
     except Exception as e:
         logger.exception("Start command error")
-        await update.message.reply_text("Something went wrong. Please try again in a moment.")
+        await update.effective_message.reply_text("Something went wrong. Please try again in a moment.")
 
 
 async def cmd_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1064,18 +1064,18 @@ async def cmd_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/clear` → clear conversation history\n"
         "`/guide` → this message\n"
     )
-    await update.message.reply_text(guide, parse_mode="Markdown")
+    await update.effective_message.reply_text(guide, parse_mode="Markdown")
 
 
 async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     conversation_history[user_id] = []
     save_history(conversation_history)
-    await update.message.reply_text("Conversation history cleared.")
+    await update.effective_message.reply_text("Conversation history cleared.")
 
 
 async def cmd_claw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("All hail the Claw! 🦀")
+    await update.effective_message.reply_text("All hail the Claw! 🦀")
 
 
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1091,16 +1091,16 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 None, lambda: sheets.fetch_recent_data(int(user_id))
             )
             history_text = format_history_for_prompt(sets, sessions)
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 f"Last 90 days — {len(sessions)} session(s), {len(sets)} set(s):\n\n{history_text}"
             )
         except Exception as e:
-            await update.message.reply_text(f"Error fetching gym history: {e}")
+            await update.effective_message.reply_text(f"Error fetching gym history: {e}")
         return
 
     # Elsewhere: conversation message count
     count = len(get_user_history(user_id))
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"📝 {count} messages stored (max {MAX_HISTORY_TURNS * 2})."
     )
 
@@ -1110,24 +1110,24 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = " ".join(context.args) if context.args else ""
     if not text:
-        await update.message.reply_text("Usage: /log <workout description>")
+        await update.effective_message.reply_text("Usage: /log <workout description>")
         return
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
         await _do_log(update, context, user_id, text)
     except Exception as e:
         logger.exception("Log command error")
-        await update.message.reply_text(f"Error logging workout: {e}")
+        await update.effective_message.reply_text(f"Error logging workout: {e}")
 
 
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
@@ -1144,7 +1144,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 gym_sessions[user_id] = orphaned_sid
                 logger.info(f"Recovered orphaned session {orphaned_sid} for user {user_id}")
             else:
-                await update.message.reply_text("No active gym session. Log something with /log first.")
+                await update.effective_message.reply_text("No active gym session. Log something with /log first.")
                 return
 
         session_id = gym_sessions.pop(user_id)
@@ -1183,7 +1183,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         type_str = classification.get("session_type", "other")
         flags = [f for f, v in [("cardio", classification.get("cardio_flag")), ("abs", classification.get("abs_flag"))] if v]
         flags_str = f" + {', '.join(flags)}" if flags else ""
-        await update.message.reply_text(f"Session closed{dur_str} — {type_str}{flags_str}.{note_str}")
+        await update.effective_message.reply_text(f"Session closed{dur_str} — {type_str}{flags_str}.{note_str}")
 
         # Generate and send session summary + coaching notes
         if session_sets:
@@ -1195,16 +1195,16 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await loop.run_in_executor(
                 None, lambda: sheets.save_session_summary(session_id, summary, int(user_id))
             )
-            await update.message.reply_text(summary)
+            await update.effective_message.reply_text(summary)
     except Exception as e:
         logger.exception("Done command error")
-        await update.message.reply_text(f"Error closing session: {e}")
+        await update.effective_message.reply_text(f"Error closing session: {e}")
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
@@ -1215,7 +1215,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if not sets and not sessions:
-            await update.message.reply_text("No workout data found in the last 90 days.")
+            await update.effective_message.reply_text("No workout data found in the last 90 days.")
             return
 
         history_text = format_history_for_prompt(sets, sessions)
@@ -1228,10 +1228,10 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = await loop.run_in_executor(
             None, lambda: query_claude_gym(stats_query, history_text, cycle=cycle)
         )
-        await update.message.reply_text(reply)
+        await update.effective_message.reply_text(reply)
     except Exception as e:
         logger.exception("Stats error")
-        await update.message.reply_text(f"Error fetching stats: {e}")
+        await update.effective_message.reply_text(f"Error fetching stats: {e}")
 
 # ── Feedback ──────────────────────────────────────────────────────────────────
 
@@ -1239,16 +1239,16 @@ async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = " ".join(context.args) if context.args else ""
     if not text:
-        await update.message.reply_text("Usage: /feedback <your message>")
+        await update.effective_message.reply_text("Usage: /feedback <your message>")
         return
     loop = asyncio.get_event_loop()
     try:
         sheets = await get_sheets()
         await loop.run_in_executor(None, lambda: sheets.save_feedback(int(user_id), text))
-        await update.message.reply_text("Thanks — feedback received.")
+        await update.effective_message.reply_text("Thanks — feedback received.")
     except Exception as e:
         logger.exception("Feedback command error")
-        await update.message.reply_text(f"Error saving feedback: {e}")
+        await update.effective_message.reply_text(f"Error saving feedback: {e}")
 
 
 # ── Profile command handlers ───────────────────────────────────────────────────
@@ -1261,7 +1261,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheets = await get_sheets()
         profile = await loop.run_in_executor(None, lambda: sheets.fetch_profile(int(user_id)))
         if not profile:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "No profile set yet.\n"
                 "Use /setprofile to add your details, e.g.:\n"
                 "/setprofile I'm 28, 180cm, 83kg, been lifting 4 years, "
@@ -1269,10 +1269,10 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         lines = [f"*{k.replace('_', ' ').title()}:* {v}" for k, v in profile.items()]
-        await update.message.reply_text("*Your Profile*\n\n" + "\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("*Your Profile*\n\n" + "\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         logger.exception("Profile fetch error")
-        await update.message.reply_text(f"Error: {e}")
+        await update.effective_message.reply_text(f"Error: {e}")
 
 
 async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1280,14 +1280,14 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = " ".join(context.args) if context.args else ""
     if not text:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Tell me about yourself in plain language, e.g.:\n"
             "/setprofile 28 years old, 180cm, 83kg, training for 4 years, "
             "intermediate, chronic left knee issue, train at a commercial gym"
         )
         return
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     try:
@@ -1295,14 +1295,14 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheets = await get_sheets()
         updates = await loop.run_in_executor(None, lambda: extract_profile(claude, text))
         if not updates:
-            await update.message.reply_text("Couldn't extract any profile fields from that — try rephrasing.")
+            await update.effective_message.reply_text("Couldn't extract any profile fields from that — try rephrasing.")
             return
         await loop.run_in_executor(None, lambda: sheets.update_profile(updates, int(user_id)))
         lines = [f"*{k.replace('_', ' ').title()}:* {v}" for k, v in updates.items()]
-        await update.message.reply_text("Profile updated:\n\n" + "\n".join(lines), parse_mode="Markdown")
+        await update.effective_message.reply_text("Profile updated:\n\n" + "\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         logger.exception("Profile update error")
-        await update.message.reply_text(f"Error: {e}")
+        await update.effective_message.reply_text(f"Error: {e}")
 
 
 # ── Cycle command handlers ─────────────────────────────────────────────────────
@@ -1310,7 +1310,7 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_newcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
     initial_text = " ".join(context.args) if context.args else None
 
@@ -1327,13 +1327,13 @@ async def cmd_newcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"role": "user", "content": initial_text},
             {"role": "assistant", "content": reply},
         ]
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             reply + "\n\n_/confirmcycle to save • /cancelcycle to discard_",
             parse_mode="Markdown",
         )
     else:
         # Multi-turn: ask for info in the Gym topic
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Let's plan your new training cycle.\n\n"
             "Tell me: your goals, how many weeks, days per week available, "
             "equipment, any injuries or limitations, and current benchmarks "
@@ -1348,13 +1348,13 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
     if user_id not in cycle_planning or not cycle_planning[user_id]:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "No active cycle plan to confirm. Use /newcycle to start one."
         )
         return
 
     if not await check_rate_limit(user_id):
-        await update.message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
+        await update.effective_message.reply_text(_RATE_LIMIT_MSG.format(limit=DAILY_API_LIMIT))
         return
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -1391,7 +1391,7 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(plan_preview) > 800:
             plan_preview = plan_preview[:800] + "…"
 
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"Training cycle saved!\n\n"
             f"Start: {start_date} | End: {new_cycle['end_date']}\n"
             f"Goals: {new_cycle['goals']}\n\n"
@@ -1399,34 +1399,34 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logger.exception("Confirm cycle error")
-        await update.message.reply_text(f"Error saving cycle: {e}")
+        await update.effective_message.reply_text(f"Error saving cycle: {e}")
 
 
 async def cmd_cancelcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if user_id in cycle_planning:
         del cycle_planning[user_id]
-        await update.message.reply_text("Cycle plan discarded.")
+        await update.effective_message.reply_text("Cycle plan discarded.")
     else:
-        await update.message.reply_text("No active cycle plan to cancel.")
+        await update.effective_message.reply_text("No active cycle plan to cancel.")
 
 
 async def cmd_cycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     cycle = await get_active_cycle(user_id)
     if not cycle:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "No active training cycle. Use /newcycle to create one."
         )
         return
-    await update.message.reply_text(format_cycle_for_prompt(cycle))
+    await update.effective_message.reply_text(format_cycle_for_prompt(cycle))
 
 
 async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     cycle = await get_active_cycle(user_id)
     if not cycle:
-        await update.message.reply_text("No active training cycle to end.")
+        await update.effective_message.reply_text("No active training cycle to end.")
         return
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -1438,10 +1438,10 @@ async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_cycles[user_id] = None
         note = " ".join(context.args) if context.args else ""
         note_str = f"\nNote: {note}" if note else ""
-        await update.message.reply_text(f"Training cycle completed.{note_str}")
+        await update.effective_message.reply_text(f"Training cycle completed.{note_str}")
     except Exception as e:
         logger.exception("End cycle error")
-        await update.message.reply_text(f"Error ending cycle: {e}")
+        await update.effective_message.reply_text(f"Error ending cycle: {e}")
 
 # ── Heartbeat ─────────────────────────────────────────────────────────────────
 
