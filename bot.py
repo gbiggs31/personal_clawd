@@ -773,10 +773,14 @@ async def _trigger_coaching_pipeline(user_id: str, messages: list[dict]):
             None,
             lambda: _pipeline_process(int(user_id), messages)
         )
-        if result.get("updated"):
-            logger.info(f"Coaching pipeline applied {result.get('applied_count', 0)} update(s) for user {user_id}")
+        if result.get("error"):
+            logger.error(f"[coaching] pipeline error for user {user_id}: {result['error']}")
+        elif result.get("updated"):
+            logger.info(f"[coaching] applied {result.get('applied_count', 0)} update(s) for user {user_id}")
+        else:
+            logger.info(f"[coaching] no update for user {user_id}: {result.get('reason', result.get('classification', {}).get('rationale', 'unknown'))}")
     except Exception:
-        logger.exception(f"Background coaching pipeline failed for user {user_id}")
+        logger.exception(f"[coaching] background pipeline exception for user {user_id}")
 
 
 async def cmd_programstate(update: Update, context: ContextTypes.DEFAULT_TYPE):
