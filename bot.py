@@ -278,7 +278,7 @@ async def query_gpt(user_id: str, user_message: str) -> str:
     return response.choices[0].message.content
 
 
-def query_claude_gym(user_message: str, history_text: str, session_text: str = "", profile: dict | None = None, cycle: dict | None = None) -> str:
+def query_claude_gym(user_message: str, history_text: str, session_text: str = "", profile: dict | None = None, cycle: dict | None = None, conv_history: list | None = None) -> str:
     """Query Claude for gym questions — profile + cycle + session + history injected as context. Synchronous."""
     if profile:
         lines = [f"- {k.replace('_', ' ').title()}: {v}" for k, v in profile.items()]
@@ -302,11 +302,13 @@ def query_claude_gym(user_message: str, history_text: str, session_text: str = "
         session_section=session_section,
         history_section=f"=== GYM HISTORY (last 90 days) ===\n{history_text}",
     )
+    # Include recent conversation turns so follow-up questions have context
+    messages = (conv_history or []) + [{"role": "user", "content": user_message}]
     response = claude.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,
         system=system,
-        messages=[{"role": "user", "content": user_message}],
+        messages=messages,
     )
     return response.content[0].text
 
@@ -744,9 +746,13 @@ async def handle_gym_query(
             if session_sets:
                 session_text = _format_exercise_history(session_sets)
 
+        # Pass the last 10 messages (5 turns) so follow-up questions have context
+        conv_history = get_user_history(user_id)[-10:]
         reply = await loop.run_in_executor(
-            None, lambda: query_claude_gym(query, history_text, session_text, profile, cycle)
+            None, lambda: query_claude_gym(query, history_text, session_text, profile, cycle, conv_history)
         )
+        append_to_history(user_id, "user", query)
+        append_to_history(user_id, "assistant", reply)
         await update.effective_message.reply_text(reply)
     except Exception as e:
         logger.exception("Gym query error")
