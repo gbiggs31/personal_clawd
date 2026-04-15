@@ -590,12 +590,28 @@ def build_canonical_state(user_id: int) -> dict:
         },
     )
 
+    # Deduplicate: if multiple applied rows share the same rule_key, keep only
+    # the most recently applied one (applied_at desc, then id for stability).
+    seen_rule_keys: set[str] = set()
+    deduped_updates: list[dict] = []
+    for u in sorted(
+        applied_updates,
+        key=lambda x: (x.get("applied_at") or "", x.get("id") or ""),
+        reverse=True,
+    ):
+        rk = u.get("rule_key")
+        if rk and rk in seen_rule_keys:
+            continue
+        if rk:
+            seen_rule_keys.add(rk)
+        deduped_updates.append(u)
+
     active_rules: list[dict] = []
     active_constraints: list[dict] = []
     coaching_updates: list[dict] = []
     priorities: list[str] = []
 
-    for u in applied_updates:
+    for u in deduped_updates:
         update_type = u.get("update_type", "")
         base = {
             "id": u.get("id"),
