@@ -107,6 +107,8 @@ GYM_QUERY_SYSTEM_TEMPLATE = """You are a knowledgeable personal training assista
 
 Answer questions about workouts, progression, technique, recovery, and programming concisely and specifically — always grounded in the user's actual data where relevant. Reference active injury flags proactively when they are relevant.
 
+IMPORTANT: If the user states a coaching rule or preference (e.g. "I want a permanent rule", "always do X", "never do Y"), acknowledge it briefly and neutrally — do NOT claim it has been saved, logged, or stored. The system handles persistence separately. Example response: "Got it — noted for your training." Do not say "already saved", "already logged", or similar.
+
 {profile_section}
 
 {cycle_section}
@@ -784,6 +786,60 @@ async def _trigger_coaching_pipeline(user_id: str, messages: list[dict]):
             logger.info(f"[coaching] no update for user {user_id}: {result.get('reason', result.get('classification', {}).get('rationale', 'unknown'))}")
     except Exception:
         logger.exception(f"[coaching] background pipeline exception for user {user_id}")
+
+
+async def cmd_setrule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Directly write a coaching rule, bypassing the classifier."""
+    user_id = str(update.effective_user.id)
+    rule_text = " ".join(context.args).strip() if context.args else ""
+    if not rule_text:
+        await update.effective_message.reply_text(
+            "Usage: `/setrule <rule text>`\nExample: `/setrule never pre-exhaust biceps on pull days`",
+            parse_mode="Markdown",
+        )
+        return
+
+    from coaching_pipeline import persist_proposed_updates, apply_program_updates, _rule_key_from_text, _now_iso
+
+    update_payload = {
+        "updateType": "rule",
+        "title": rule_text[:120],
+        "description": rule_text,
+        "reason": "Manually set by user via /setrule",
+        "applicabilityType": "durable",
+        "startAt": None,
+        "endAt": None,
+        "appliesWhile": None,
+        "appliesToProgrammePhase": None,
+        "workoutType": None,
+        "exerciseName": None,
+        "exerciseFamily": None,
+        "ruleKey": _rule_key_from_text(rule_text[:60]),
+        "confidence": 1.0,
+    }
+    provenance = {"source": "setrule_command", "extracted_at": _now_iso()}
+
+    loop = asyncio.get_event_loop()
+    try:
+        persisted_ids = await loop.run_in_executor(
+            None, lambda: persist_proposed_updates([update_payload], int(user_id), provenance)
+        )
+        if not persisted_ids:
+            await update.effective_message.reply_text("Failed to persist rule — check logs.")
+            return
+        applied_ids = await loop.run_in_executor(
+            None, lambda: apply_program_updates(int(user_id), persisted_ids)
+        )
+        if applied_ids:
+            await update.effective_message.reply_text(f"Rule saved: _{rule_text}_", parse_mode="Markdown")
+        else:
+            await update.effective_message.reply_text(
+                f"Rule queued for review (duplicate or conflict detected): _{rule_text}_",
+                parse_mode="Markdown",
+            )
+    except Exception:
+        logger.exception("cmd_setrule error")
+        await update.effective_message.reply_text("Error saving rule — check logs.")
 
 
 async def cmd_programstate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1565,6 +1621,7 @@ def main():
     app.add_handler(CommandHandler("cycle", cmd_cycle))
     app.add_handler(CommandHandler("endcycle", cmd_endcycle))
     app.add_handler(CommandHandler("programstate", cmd_programstate))
+    app.add_handler(CommandHandler("setrule", cmd_setrule))
 
     # Message handlers — edit handler must be registered before the catch-all
     app.add_handler(
