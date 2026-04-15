@@ -642,7 +642,7 @@ class TestTemporaryConstraintPreserved(unittest.TestCase):
             return None
 
         with patch.object(cp.CoachingDB, "_post", side_effect=_post_side):
-            ids = cp.persist_proposed_updates(updates, USER_ID, provenance, classifier)
+            ids = cp.persist_proposed_updates(updates, USER_ID, provenance)
 
         self.assertEqual(len(ids), 1)
 
@@ -659,8 +659,8 @@ class TestTemporaryConstraintPreserved(unittest.TestCase):
         self.assertEqual(saved["rule_key"], "reduce_pressing_volume_shoulder")
         self.assertEqual(saved["start_at"], "2026-04-13")
 
-        # Confidence threshold: constraint IS in AUTO_APPLY_TYPES → auto-applied
-        self.assertEqual(saved["status"], "applied")
+        # All updates are persisted as proposed; apply_program_updates applies them
+        self.assertEqual(saved["status"], "proposed")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

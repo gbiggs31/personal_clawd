@@ -321,24 +321,17 @@ def persist_proposed_updates(
     updates: list[dict],
     user_id: int,
     provenance: dict,
-    classifier: dict,
 ) -> list[str]:
     """
-    Step 4 — write each extracted update to program_updates.
+    Step 4 — write each extracted update to program_updates as 'proposed'.
 
-    Determines initial status:
-      • 'applied'  if classifier + update confidence both pass thresholds
-                   AND update_type is in AUTO_APPLY_TYPES
-      • 'proposed' otherwise
+    apply_program_updates (step 5) handles the transition to 'applied' and
+    triggers the canonical-state rebuild.
 
     Returns a list of persisted row IDs (UUIDs as strings).
     """
     db = _get_db()
     persisted_ids: list[str] = []
-
-    classifier_confident = (
-        classifier.get("confidence", 0.0) >= CLASSIFIER_CONFIDENCE_THRESHOLD
-    )
 
     for update in updates:
         update_type = update.get("updateType") or update.get("update_type", "rule")
@@ -362,15 +355,10 @@ def persist_proposed_updates(
         if not rule_key:
             rule_key = _rule_key_from_text(title)
 
-        # Determine initial status
-        update_confident = confidence >= EXTRACTOR_CONFIDENCE_THRESHOLD
-        auto_apply = (
-            classifier_confident
-            and update_confident
-            and update_type in AUTO_APPLY_TYPES
-        )
-        status = "applied" if auto_apply else "proposed"
-        applied_at = _now_iso() if auto_apply else None
+        # Always persist as proposed; apply_program_updates handles the
+        # applied transition and canonical-state rebuild.
+        status = "proposed"
+        applied_at = None
 
         row = {
             "telegram_user_id": user_id,
@@ -798,7 +786,7 @@ def process_conversation(
             "update_scope_hint": classification.get("update_scope_hint"),
             "extracted_at": _now_iso(),
         }
-        persisted_ids = persist_proposed_updates(updates, user_id, provenance, classification)
+        persisted_ids = persist_proposed_updates(updates, user_id, provenance)
         result["proposed_count"] = len(persisted_ids)
 
         if not persisted_ids:
