@@ -560,8 +560,10 @@ def apply_program_updates(user_id: int, update_ids: list[str]) -> list[str]:
                 update_id, user_id,
             )
 
-    # Rebuild canonical state after all updates are applied
-    if applied_ids:
+    # Rebuild canonical state if any update_ids were processed — covers the
+    # case where all candidates were duplicates (already-applied rows exist
+    # but state was never assembled due to earlier bugs).
+    if update_ids:
         try:
             build_canonical_state(user_id)
         except Exception:
