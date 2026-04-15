@@ -139,7 +139,6 @@ class TestClassifyTooShort(unittest.TestCase):
     def test_classify_too_short(self, MockAnthropic):
         messages = [
             {"role": "user", "content": "Hi."},
-            {"role": "assistant", "content": "Hey!"},
         ]
         # Claude must NOT be called
         mock_client = MagicMock()

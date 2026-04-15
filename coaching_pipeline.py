@@ -46,7 +46,7 @@ AUTO_APPLY_TYPES: set[str] = {
 }
 
 # Ignore conversations that are too short for a meaningful update.
-MIN_MESSAGES_FOR_PIPELINE: int = 4
+MIN_MESSAGES_FOR_PIPELINE: int = 2
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 

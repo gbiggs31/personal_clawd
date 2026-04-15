@@ -761,7 +761,7 @@ async def handle_gym_query(
 
         # Fire coaching update pipeline asynchronously — doesn't block reply
         full_history = get_user_history(user_id)
-        if len(full_history) >= 4:
+        if len(full_history) >= 2:
             asyncio.create_task(_trigger_coaching_pipeline(user_id, full_history[-12:]))
     except Exception as e:
         logger.exception("Gym query error")
