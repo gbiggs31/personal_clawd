@@ -309,6 +309,7 @@ def extract_coaching_updates(
     )
 
     raw = response.content[0].text
+    logger.info("Extractor raw response for user %s: %r", user_id, raw[:500])
     try:
         result = _parse_json_response(raw)
     except (ValueError, KeyError) as exc:
@@ -316,8 +317,10 @@ def extract_coaching_updates(
         return {"updates": []}
 
     if not isinstance(result.get("updates"), list):
+        logger.warning("Extractor result missing 'updates' list for user %s: %r", user_id, result)
         return {"updates": []}
 
+    logger.info("Extractor found %d update(s) for user %s", len(result["updates"]), user_id)
     return result
 
 
