@@ -39,6 +39,10 @@ AUTO_APPLY_TYPES: set[str] = {
     "constraint",
     "effort_change",
     "exercise_order_change",
+    "substitution",
+    "progression_change",
+    "volume_change",
+    "priority_change",
 }
 
 # Ignore conversations that are too short for a meaningful update.
@@ -752,7 +756,7 @@ def process_conversation(
 
         if not classification.get("should_update"):
             result["reason"] = f"Classifier says no update: {classification.get('rationale', '')}"
-            logger.debug(
+            logger.info(
                 "process_conversation: user=%s no update — %s",
                 user_id, classification.get("rationale"),
             )
@@ -763,7 +767,7 @@ def process_conversation(
                 f"Classifier confidence {classification['confidence']:.2f} below threshold "
                 f"{CLASSIFIER_CONFIDENCE_THRESHOLD}"
             )
-            logger.debug("process_conversation: user=%s low confidence, skipping.", user_id)
+            logger.info("process_conversation: user=%s low confidence %.2f, skipping.", user_id, classification.get("confidence", 0.0))
             return result
 
         # ── Step 2: retrieve context ──────────────────────────────────────────
@@ -813,6 +817,14 @@ def process_conversation(
                 and update_type in AUTO_APPLY_TYPES
             ):
                 auto_apply_candidates.append(uid_str)
+
+        if not auto_apply_candidates:
+            logger.info(
+                "process_conversation: user=%s %d update(s) persisted but none qualify for auto-apply "
+                "(types: %s)",
+                user_id, len(persisted_ids),
+                [u.get("updateType") or u.get("update_type") for u in updates],
+            )
 
         applied_ids = apply_program_updates(user_id, auto_apply_candidates)
         result["applied_count"] = len(applied_ids)
