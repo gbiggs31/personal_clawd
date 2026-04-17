@@ -1,0 +1,66 @@
+import { createClient } from '@supabase/supabase-js'
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const token = req.headers.authorization?.replace('Bearer ', '')
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+
+  const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !user) return res.status(401).json({ error: 'Invalid token' })
+
+  const { data: authRow } = await supabase
+    .from('user_auth')
+    .select('telegram_user_id')
+    .eq('auth_user_id', user.id)
+    .single()
+  if (!authRow) return res.status(403).json({ error: 'Account not linked to Telegram' })
+
+  const uid = authRow.telegram_user_id
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  const [{ data: sessions }, { data: sets }] = await Promise.all([
+    supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date', { ascending: false }),
+    supabase.from('sets').select('exercise, weight_kg, reps, date').eq('telegram_user_id', uid).gte('date', cutoff),
+  ])
+
+  const sessionList = sessions || []
+  const setList = sets || []
+
+  // Count by type
+  const byType = {}
+  for (const s of sessionList) {
+    const t = s.session_type || 'other'
+    byType[t] = (byType[t] || 0) + 1
+  }
+
+  // Most frequent exercises
+  const exCounts = {}
+  for (const s of setList) {
+    if (s.exercise) exCounts[s.exercise] = (exCounts[s.exercise] || 0) + 1
+  }
+  const topExercises = Object.entries(exCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }))
+
+  // Total volume (kg × reps)
+  const totalVolume = setList.reduce((acc, s) => {
+    if (s.weight_kg && s.reps) acc += s.weight_kg * s.reps
+    return acc
+  }, 0)
+
+  // Last session date
+  const lastSession = sessionList[0]
+
+  return res.status(200).json({
+    sessions90d: sessionList.length,
+    byType,
+    topExercises,
+    totalVolume: Math.round(totalVolume),
+    lastSessionDate: lastSession?.date || null,
+    lastSessionType: lastSession?.session_type || null,
+  })
+}
