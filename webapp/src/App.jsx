@@ -9,6 +9,7 @@ import LogWorkout from './pages/LogWorkout.jsx'
 import Today from './pages/Today.jsx'
 import SessionDetail from './pages/SessionDetail.jsx'
 import Progress from './pages/Progress.jsx'
+import Admin from './pages/Admin.jsx'
 
 function RequireAuth({ children }) {
   const [session, setSession] = useState(undefined)
@@ -46,6 +47,10 @@ export default function App() {
         } />
         <Route path="/session/:sessionId" element={
           <RequireAuth><SessionDetail /></RequireAuth>
+        } />
+
+        <Route path="/admin" element={
+          <RequireAuth><Layout><Admin /></Layout></RequireAuth>
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

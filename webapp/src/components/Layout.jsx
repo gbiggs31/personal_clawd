@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './Layout.css'
@@ -5,6 +6,14 @@ import './Layout.css'
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      const email = data.session?.user?.email
+      if (email) setIsAdmin(email === import.meta.env.VITE_ADMIN_EMAIL)
+    })
+  }, [])
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -15,6 +24,7 @@ export default function Layout({ children }) {
   const isLog      = pathname === '/log'
   const isHistory  = pathname === '/'
   const isProgress = pathname === '/progress'
+  const isAdminPage = pathname === '/admin'
 
   return (
     <div className="layout">
@@ -26,6 +36,9 @@ export default function Layout({ children }) {
           <Link to="/log"      className={`header-tab ${isLog      ? 'active' : ''}`}>Log</Link>
           <Link to="/"         className={`header-tab ${isHistory  ? 'active' : ''}`}>History</Link>
           <Link to="/progress" className={`header-tab ${isProgress ? 'active' : ''}`}>Progress</Link>
+          {isAdmin && (
+            <Link to="/admin" className={`header-tab ${isAdminPage ? 'active' : ''}`}>Admin</Link>
+          )}
         </nav>
 
         <button className="layout-signout" onClick={handleSignOut}>Sign out</button>
