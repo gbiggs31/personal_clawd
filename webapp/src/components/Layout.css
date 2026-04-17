@@ -64,20 +64,63 @@
   color: var(--text);
 }
 
-.layout-signout {
+.layout-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.layout-hamburger {
   background: none;
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: 8px;
-  padding: 5px 12px;
-  font-size: 13px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
-  flex-shrink: 0;
 }
 
-.layout-signout:hover {
+.layout-hamburger:hover {
   border-color: rgba(255,255,255,0.2);
+  color: var(--text);
+}
+
+.layout-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 148px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: rgba(255,255,255,0.06);
   color: var(--text);
 }
 
