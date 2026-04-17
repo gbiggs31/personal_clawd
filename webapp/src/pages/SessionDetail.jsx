@@ -250,6 +250,20 @@ export default function SessionDetail() {
   const [previousSessionSets, setPreviousSessionSets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [editingType, setEditingType] = useState(false)
+
+  const SESSION_TYPES = ['push', 'pull', 'legs', 'upper', 'full_body', 'cardio', 'other']
+
+  async function handleUpdateSessionType(newType) {
+    const { error: err } = await supabase
+      .from('sessions')
+      .update({ session_type: newType })
+      .eq('session_id', sessionId)
+    if (!err) {
+      setSession(prev => ({ ...prev, session_type: newType }))
+    }
+    setEditingType(false)
+  }
 
   useEffect(() => {
     async function load() {
@@ -366,11 +380,6 @@ export default function SessionDetail() {
   if (error)   return <div className="loading-full error-text">{error}</div>
   if (!session) return <div className="loading-full">Session not found.</div>
 
-  const tags = []
-  if (session.session_type) tags.push(session.session_type)
-  if (session.cardio_flag)  tags.push('Cardio')
-  if (session.abs_flag)     tags.push('Abs')
-
   return (
     <div className="detail-page">
       <header className="detail-header">
@@ -387,13 +396,33 @@ export default function SessionDetail() {
             </div>
 
             <div className="session-tags">
-              {tags.map(t => (
-                <span key={t} className={`tag ${t === 'Cardio' || t === 'Abs' ? 'tag-dim' : ''}`}>
-                  {t}
-                </span>
-              ))}
+              {session.session_type && !editingType && (
+                <button className="tag tag-editable" onClick={() => setEditingType(true)} title="Edit session type">
+                  {session.session_type}
+                  <svg width="10" height="10" viewBox="0 0 14 14" fill="none" style={{marginLeft: 5, opacity: 0.6}}>
+                    <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
+              {session.cardio_flag && <span className="tag tag-dim">Cardio</span>}
+              {session.abs_flag    && <span className="tag tag-dim">Abs</span>}
             </div>
           </div>
+
+          {editingType && (
+            <div className="type-picker">
+              {SESSION_TYPES.map(t => (
+                <button
+                  key={t}
+                  className={`type-option ${t === session.session_type ? 'active' : ''}`}
+                  onClick={() => handleUpdateSessionType(t)}
+                >
+                  {t}
+                </button>
+              ))}
+              <button className="type-cancel" onClick={() => setEditingType(false)}>Cancel</button>
+            </div>
+          )}
 
           {session.overall_note && (
             <p className="detail-overall-note">{session.overall_note}</p>
