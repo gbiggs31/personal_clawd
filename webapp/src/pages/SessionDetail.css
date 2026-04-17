@@ -280,6 +280,151 @@
   color: var(--danger);
 }
 
+/* ── Set edit button ──────────────────────────────────────────── */
+
+.set-edit-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.set-card:hover .set-edit-btn {
+  opacity: 1;
+}
+
+.set-edit-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* ── Edit mode card ───────────────────────────────────────────── */
+
+.set-card.editing {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(141, 247, 192, 0.2);
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-field-full {
+  margin-bottom: 10px;
+}
+
+.edit-field span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.edit-field input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 7px 10px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.edit-field input:focus {
+  border-color: rgba(141, 247, 192, 0.35);
+}
+
+.edit-injury-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.edit-injury-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.edit-actions-right {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn-save,
+.edit-btn-cancel,
+.edit-btn-delete {
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.edit-btn-save {
+  background: var(--accent);
+  color: #07160f;
+}
+
+.edit-btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-btn-cancel {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+}
+
+.edit-btn-delete {
+  background: rgba(255, 92, 92, 0.12);
+  color: var(--danger);
+}
+
+.edit-btn-save:not(:disabled):hover,
+.edit-btn-cancel:hover,
+.edit-btn-delete:hover {
+  opacity: 0.8;
+}
+
 .session-tags {
   display: flex;
   gap: 6px;

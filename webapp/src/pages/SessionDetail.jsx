@@ -45,11 +45,119 @@ function formatWeightRep(set) {
   return `${weight} ${reps}`.trim()
 }
 
-function SetRow({ set, previousSet }) {
+function SetRow({ set, previousSet, onUpdate, onDelete }) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [form, setForm] = useState({})
+
+  function startEdit() {
+    setForm({
+      weight_kg: set.weight_kg ?? '',
+      reps: set.reps ?? '',
+      rpe: set.rpe ?? '',
+      rir: set.rir ?? '',
+      note: set.note ?? '',
+      injury_flag: set.injury_flag ?? false,
+      injury_body_part: set.injury_body_part ?? '',
+    })
+    setConfirmDelete(false)
+    setEditing(true)
+  }
+
+  function cancel() {
+    setEditing(false)
+    setConfirmDelete(false)
+  }
+
+  function field(key) {
+    return e => setForm(f => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  }
+
+  async function save() {
+    setSaving(true)
+    const updates = {
+      weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
+      reps:      form.reps      !== '' ? parseInt(form.reps)        : null,
+      rpe:       form.rpe       !== '' ? parseFloat(form.rpe)       : null,
+      rir:       form.rir       !== '' ? parseInt(form.rir)         : null,
+      note:      form.note || null,
+      injury_flag: form.injury_flag,
+      injury_body_part: form.injury_flag ? (form.injury_body_part || null) : null,
+    }
+    await onUpdate(set.id, updates)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    await onDelete(set.id)
+  }
+
   const rpe = set.rpe != null ? `RPE ${set.rpe}` : null
   const rir = set.rir != null ? `RIR ${set.rir}` : null
   const injury = set.injury_flag
   const delta = compareSet(set, previousSet)
+
+  if (editing) {
+    return (
+      <div className={`set-card editing ${injury ? 'injury' : ''}`}>
+        <div className="set-index">Set {set.set_num}</div>
+
+        <div className="edit-grid">
+          <label className="edit-field">
+            <span>Weight (kg)</span>
+            <input type="number" step="0.5" value={form.weight_kg} onChange={field('weight_kg')} placeholder="BW" />
+          </label>
+          <label className="edit-field">
+            <span>Reps</span>
+            <input type="number" step="1" value={form.reps} onChange={field('reps')} placeholder="—" />
+          </label>
+          <label className="edit-field">
+            <span>RPE</span>
+            <input type="number" step="0.5" min="0" max="10" value={form.rpe} onChange={field('rpe')} placeholder="—" />
+          </label>
+          <label className="edit-field">
+            <span>RIR</span>
+            <input type="number" step="1" min="0" value={form.rir} onChange={field('rir')} placeholder="—" />
+          </label>
+        </div>
+
+        <label className="edit-field edit-field-full">
+          <span>Note</span>
+          <input type="text" value={form.note} onChange={field('note')} placeholder="Optional note" />
+        </label>
+
+        <label className="edit-injury-toggle">
+          <input type="checkbox" checked={form.injury_flag} onChange={field('injury_flag')} />
+          <span>Injury flag</span>
+        </label>
+
+        {form.injury_flag && (
+          <label className="edit-field edit-field-full">
+            <span>Body part</span>
+            <input type="text" value={form.injury_body_part} onChange={field('injury_body_part')} placeholder="e.g. left shoulder" />
+          </label>
+        )}
+
+        <div className="edit-actions">
+          <button className="edit-btn-delete" onClick={handleDelete}>
+            {confirmDelete ? 'Confirm delete?' : 'Delete'}
+          </button>
+          <div className="edit-actions-right">
+            <button className="edit-btn-cancel" onClick={cancel}>Cancel</button>
+            <button className="edit-btn-save" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`set-card ${injury ? 'injury' : ''}`}>
@@ -68,6 +176,11 @@ function SetRow({ set, previousSet }) {
               {delta.text}
             </span>
           )}
+          <button className="set-edit-btn" onClick={startEdit} aria-label="Edit set">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -86,7 +199,7 @@ function SetRow({ set, previousSet }) {
   )
 }
 
-function ExerciseBlock({ exercise, sets, previousSets }) {
+function ExerciseBlock({ exercise, sets, previousSets, onUpdate, onDelete }) {
   const topSet = getTopSet(sets)
   const prevTop = getTopSet(previousSets)
   const topDelta = compareSet(topSet, prevTop)
@@ -119,6 +232,8 @@ function ExerciseBlock({ exercise, sets, previousSets }) {
             key={set.id}
             set={set}
             previousSet={previousSets?.[index]}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
           />
         ))}
       </div>
@@ -193,6 +308,20 @@ export default function SessionDetail() {
 
     load()
   }, [sessionId])
+
+  async function handleUpdateSet(setId, fields) {
+    const { error: err } = await supabase.from('sets').update(fields).eq('id', setId)
+    if (!err) {
+      setSets(prev => prev.map(s => s.id === setId ? { ...s, ...fields } : s))
+    }
+  }
+
+  async function handleDeleteSet(setId) {
+    const { error: err } = await supabase.from('sets').delete().eq('id', setId)
+    if (!err) {
+      setSets(prev => prev.filter(s => s.id !== setId))
+    }
+  }
 
   const groupedCurrent = useMemo(() => {
     const order = []
@@ -290,6 +419,8 @@ export default function SessionDetail() {
             exercise={exercise}
             sets={groupedCurrent.grouped[exercise]}
             previousSets={groupedPrevious[exercise] || []}
+            onUpdate={handleUpdateSet}
+            onDelete={handleDeleteSet}
           />
         ))}
 
