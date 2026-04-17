@@ -463,9 +463,10 @@ async def _do_log(
         None, lambda: sheets.delete_rows_by_message_id(message_id, int(user_id))
     )
 
+    known = list(_user_exercises.get(user_id, set()))
     result = await loop.run_in_executor(
         None,
-        lambda: extract_workout(claude, text, partial_parse, clarification),
+        lambda: extract_workout(claude, text, partial_parse, clarification, known),
     )
 
     if result.get("no_workout_data"):
@@ -528,8 +529,9 @@ async def handle_verbal_edit(
     sheets = await get_sheets()
     session_id = gym_sessions[user_id]
 
+    known = list(_user_exercises.get(user_id, set()))
     result = await loop.run_in_executor(
-        None, lambda: extract_workout(claude, text)
+        None, lambda: extract_workout(claude, text, known_exercises=known)
     )
 
     if result.get("no_workout_data") or not result.get("sets"):

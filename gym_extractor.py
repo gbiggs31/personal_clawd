@@ -82,7 +82,17 @@ Use snake_case keys consistently across sessions:
 - When confidence < 0.75, still populate sets with best-guess values
 
 ### Cardio
-Same schema: reps=null, weight_kg=null, extras holds duration_mins/distance_km/pace etc."""
+Same schema: reps=null, weight_kg=null, extras holds duration_mins/distance_km/pace etc.
+
+### Exercise name normalisation
+If a known exercises list is provided, apply these rules in order:
+1. **Obvious match** — same movement, just different capitalisation, abbreviation, or casual shorthand
+   (e.g. "flat bench" → "Bench Press", "rdl" → "Romanian Deadlift", "ohp" → "Overhead Press"):
+   use the known name exactly, silently, at full confidence.
+2. **Possible variant** — could plausibly be a distinct exercise
+   (e.g. "bench press machine" when "Bench Press" is known, or "incline bench" when only "Bench Press" is known):
+   set confidence < 0.75 and ask: "Is '[logged name]' the same exercise as '[known name]', or a separate one?"
+3. **Clearly new** — no close match exists in the known list: use the name as written at full confidence."""
 
 
 CYCLE_SUMMARY_SYSTEM = """You extract structured training cycle data from a planning conversation.
@@ -110,6 +120,7 @@ def extract_workout(
     text: str,
     partial_parse: Optional[dict] = None,
     clarification: Optional[str] = None,
+    known_exercises: Optional[list] = None,
 ) -> dict:
     """Parse natural-language workout text into structured JSON.
 
@@ -126,6 +137,9 @@ def extract_workout(
         )
     else:
         user_content = text
+
+    if known_exercises:
+        user_content += "\n\nKnown exercises for this user:\n" + "\n".join(f"- {e}" for e in sorted(known_exercises))
 
     raw = _call_claude(client, EXTRACTION_SYSTEM, [{"role": "user", "content": user_content}])
 
