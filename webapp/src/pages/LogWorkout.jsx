@@ -116,26 +116,48 @@ function SessionBanner({ session, onDiscard }) {
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function LogEmptyState({ onExample }) {
-  const examples = [
-    'bench press 3x5 @ 100kg',
-    'squat 4x3 @ 140kg RPE 8',
-    'rdl 3x8 @ 90kg, felt solid',
-    'run 5km easy pace',
-  ]
+const LOG_EXAMPLES = [
+  'bench press 3x5 @ 100kg',
+  'squat 4x3 @ 140kg RPE 8',
+  'rdl 3x8 @ 90kg, felt solid',
+  'ohp 4x6 @ 60kg',
+  'run 5km easy pace',
+  'pull-ups 3x8 bodyweight',
+]
+
+const LOG_COMMANDS = [
+  { cmd: '/done',             label: 'Finish session',      hint: 'Closes & generates summary',    send: true  },
+  { cmd: '/done ',            label: '/done [note]',        hint: 'Add a session note',             send: false },
+  { cmd: '/stats',            label: 'Stats',               hint: '90-day training summary',        send: true  },
+]
+
+function LogEmptyState({ onExample, onSend }) {
   return (
     <div className="log-empty">
       <div className="log-empty-icon">+</div>
       <h2 className="log-empty-title">Log your workout</h2>
-      <p className="log-empty-sub">Type exercises below. Use <code>/done</code> to close the session.</p>
+      <p className="log-empty-sub">Type exercises naturally — just describe what you did.</p>
+
+      <div className="log-section-label">Examples</div>
       <div className="log-examples">
-        {examples.map(ex => (
+        {LOG_EXAMPLES.map(ex => (
           <button key={ex} className="log-example" onClick={() => onExample(ex)}>{ex}</button>
         ))}
       </div>
-      <div className="log-commands-hint">
-        <span><code>/done [note]</code> — finish &amp; summarise</span>
-        <span><code>/stats</code> — 90-day summary</span>
+
+      <div className="log-section-label">Commands</div>
+      <div className="log-commands-grid">
+        {LOG_COMMANDS.map(({ cmd, label, hint, send }) => (
+          <button
+            key={cmd}
+            className="log-command-card"
+            onClick={() => send ? onSend(cmd) : onExample(cmd)}
+            title={hint}
+          >
+            <span className="log-command-name">{label}</span>
+            <span className="log-command-hint">{hint}</span>
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -433,7 +455,10 @@ export default function LogWorkout() {
 
       {isEmpty && (
         mode === 'log'
-          ? <LogEmptyState onExample={ex => { setInput(ex); textareaRef.current?.focus() }} />
+          ? <LogEmptyState
+              onExample={ex => { setInput(ex); textareaRef.current?.focus() }}
+              onSend={cmd => send(cmd)}
+            />
           : <ChatEmptyState onSuggestion={s => send(s)} />
       )}
 

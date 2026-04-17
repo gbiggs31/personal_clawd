@@ -133,24 +133,59 @@
   color: var(--accent);
 }
 
-.log-commands-hint {
-  display: flex;
-  gap: 20px;
-  font-size: 13px;
+.log-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
   color: var(--muted);
-  opacity: 0.7;
-  flex-wrap: wrap;
-  justify-content: center;
+  opacity: 0.6;
+  margin-bottom: 8px;
+  align-self: flex-start;
+  width: 100%;
+  max-width: 520px;
 }
 
-.log-commands-hint code {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.9em;
-  background: rgba(255,255,255,0.07);
+.log-commands-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-width: 520px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.log-command-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 5px;
-  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.log-command-card:hover {
+  border-color: rgba(141,247,192,0.3);
+  background: rgba(141,247,192,0.04);
+}
+
+.log-command-name {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.log-command-hint {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.7;
+  line-height: 1.3;
 }
 
 /* ── Feed ─────────────────────────────────────────────────────── */
