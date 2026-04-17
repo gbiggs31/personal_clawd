@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Today from './pages/Today.jsx'
 import SessionDetail from './pages/SessionDetail.jsx'
 import Chat from './pages/Chat.jsx'
+import Progress from './pages/Progress.jsx'
 
 function RequireAuth({ children }) {
   const [session, setSession] = useState(undefined)
@@ -38,6 +39,9 @@ export default function App() {
         } />
         <Route path="/chat" element={
           <RequireAuth><Layout><Chat /></Layout></RequireAuth>
+        } />
+        <Route path="/progress" element={
+          <RequireAuth><Layout><Progress /></Layout></RequireAuth>
         } />
         <Route path="/session/:sessionId" element={
           <RequireAuth><SessionDetail /></RequireAuth>

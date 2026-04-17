@@ -1,0 +1,351 @@
+.progress-page {
+  min-height: calc(100dvh - 56px);
+}
+
+.progress-main {
+  max-width: 840px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+}
+
+.progress-title {
+  font-size: 28px;
+  font-weight: 760;
+  letter-spacing: -0.5px;
+  margin-bottom: 20px;
+}
+
+/* ── Exercise picker ──────────────────────────────────────────── */
+
+.ex-picker {
+  position: relative;
+  margin-bottom: 24px;
+}
+
+.ex-picker-box {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: text;
+  transition: border-color 0.15s;
+  min-height: 44px;
+}
+
+.ex-picker-box:focus-within {
+  border-color: rgba(141, 247, 192, 0.35);
+}
+
+.ex-picker-input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.ex-picker-input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.ex-picker-selected {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ex-picker-clear {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  transition: color 0.15s;
+}
+
+.ex-picker-clear:hover {
+  color: var(--text);
+}
+
+.ex-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #131820;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-y: auto;
+  max-height: 260px;
+  z-index: 50;
+  list-style: none;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.ex-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.ex-option:hover,
+.ex-option.active {
+  background: rgba(141, 247, 192, 0.08);
+  color: var(--accent);
+}
+
+/* ── Selectors (metric + range) ───────────────────────────────── */
+
+.selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pill {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.pill:hover {
+  background: rgba(141, 247, 192, 0.06);
+  color: var(--text);
+}
+
+.pill.active {
+  background: rgba(141, 247, 192, 0.12);
+  border-color: rgba(141, 247, 192, 0.3);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.range-row {
+  gap: 5px;
+}
+
+.range-row .pill {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* ── Summary strip ────────────────────────────────────────────── */
+
+.prog-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.prog-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.prog-stat-value {
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: -0.3px;
+  margin-bottom: 3px;
+  color: var(--text);
+}
+
+.prog-stat-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.prog-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.prog-stat.up .prog-stat-value   { color: #8df7c0; }
+.prog-stat.down .prog-stat-value { color: var(--danger); }
+
+/* ── Chart ────────────────────────────────────────────────────── */
+
+.chart-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px 8px 12px 4px;
+  margin-bottom: 20px;
+}
+
+.chart-tooltip {
+  background: #1a1f2b;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  pointer-events: none;
+}
+
+.chart-tooltip-date {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.chart-tooltip-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chart-tooltip-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ── History table ────────────────────────────────────────────── */
+
+.history-table {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.history-table-head {
+  display: grid;
+  grid-template-columns: 1fr 60px 100px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.history-table-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 100px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  transition: background 0.1s;
+}
+
+.history-table-row:last-child {
+  border-bottom: none;
+}
+
+.history-table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ht-date {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ht-sets {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ht-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ht-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ── Empty / loading states ───────────────────────────────────── */
+
+.progress-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 15px;
+  gap: 12px;
+}
+
+.progress-empty-icon {
+  font-size: 32px;
+  opacity: 0.4;
+}
+
+.progress-loading {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 40px 0;
+  text-align: center;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .progress-main {
+    padding: 20px 14px 80px;
+  }
+
+  .progress-title {
+    font-size: 24px;
+  }
+
+  .prog-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .history-table-head,
+  .history-table-row {
+    grid-template-columns: 1fr 44px 80px;
+    padding: 10px 12px;
+  }
+
+  .pill {
+    font-size: 12px;
+    padding: 5px 11px;
+  }
+}

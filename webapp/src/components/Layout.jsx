@@ -11,9 +11,10 @@ export default function Layout({ children }) {
     navigate('/login')
   }
 
-  const isToday = pathname === '/today'
-  const isLog   = pathname === '/'
-  const isChat  = pathname === '/chat'
+  const isToday    = pathname === '/today'
+  const isLog      = pathname === '/'
+  const isChat     = pathname === '/chat'
+  const isProgress = pathname === '/progress'
 
   return (
     <div className="layout">
@@ -21,9 +22,10 @@ export default function Layout({ children }) {
         <div className="layout-logo">Ave<span>nra</span></div>
 
         <nav className="header-tabs" aria-label="Main navigation">
-          <Link to="/today" className={`header-tab ${isToday ? 'active' : ''}`}>Today</Link>
-          <Link to="/"     className={`header-tab ${isLog   ? 'active' : ''}`}>Log</Link>
-          <Link to="/chat" className={`header-tab ${isChat  ? 'active' : ''}`}>Chat</Link>
+          <Link to="/today"     className={`header-tab ${isToday    ? 'active' : ''}`}>Today</Link>
+          <Link to="/"         className={`header-tab ${isLog      ? 'active' : ''}`}>Log</Link>
+          <Link to="/progress" className={`header-tab ${isProgress ? 'active' : ''}`}>Progress</Link>
+          <Link to="/chat"     className={`header-tab ${isChat     ? 'active' : ''}`}>Chat</Link>
         </nav>
 
         <button className="layout-signout" onClick={handleSignOut}>Sign out</button>
@@ -52,6 +54,17 @@ export default function Layout({ children }) {
             <rect x="2" y="13.5" width="10" height="2.5" rx="1.25" fill="currentColor"/>
           </svg>
           <span>Log</span>
+        </Link>
+
+        <Link to="/progress" className={`bottom-tab ${isProgress ? 'active' : ''}`}>
+          {/* Trend / chart icon */}
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <polyline points="2,15 7,9 11,12 18,5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <circle cx="7" cy="9" r="1.5" fill="currentColor"/>
+            <circle cx="11" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="18" cy="5" r="1.5" fill="currentColor"/>
+          </svg>
+          <span>Progress</span>
         </Link>
 
         <Link to="/chat" className={`bottom-tab ${isChat ? 'active' : ''}`}>
