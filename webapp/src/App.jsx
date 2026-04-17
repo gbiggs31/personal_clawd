@@ -8,7 +8,6 @@ import Dashboard from './pages/Dashboard.jsx'
 import LogWorkout from './pages/LogWorkout.jsx'
 import Today from './pages/Today.jsx'
 import SessionDetail from './pages/SessionDetail.jsx'
-import Chat from './pages/Chat.jsx'
 import Progress from './pages/Progress.jsx'
 
 function RequireAuth({ children }) {
@@ -41,9 +40,7 @@ export default function App() {
         <Route path="/today" element={
           <RequireAuth><Layout><Today /></Layout></RequireAuth>
         } />
-        <Route path="/chat" element={
-          <RequireAuth><Layout><Chat /></Layout></RequireAuth>
-        } />
+        <Route path="/chat" element={<Navigate to="/log" replace />} />
         <Route path="/progress" element={
           <RequireAuth><Layout><Progress /></Layout></RequireAuth>
         } />

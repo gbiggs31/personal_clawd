@@ -10,18 +10,10 @@ function loadSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
-
-function saveSession(session) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
-}
-
-function clearSession() {
-  localStorage.removeItem(SESSION_KEY)
-}
+function saveSession(s) { localStorage.setItem(SESSION_KEY, JSON.stringify(s)) }
+function clearSession() { localStorage.removeItem(SESSION_KEY) }
 
 function elapsed(startedAt) {
   const mins = Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)
@@ -40,7 +32,40 @@ function CommandItem({ text }) {
   )
 }
 
-function ResponseItem({ msg }) {
+function TypingDots() {
+  return (
+    <span className="typing-dots" aria-label="Thinking">
+      <span /><span /><span />
+    </span>
+  )
+}
+
+function ChatUserItem({ text }) {
+  return (
+    <div className="feed-row chat-user">
+      <div className="chat-bubble user">{text}</div>
+    </div>
+  )
+}
+
+function ChatAssistantItem({ text, isStreaming }) {
+  return (
+    <div className="feed-row chat-assistant">
+      <div className="chat-avatar">A</div>
+      <div className="chat-bubble assistant">
+        {text
+          ? <div className="feed-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>
+          : isStreaming ? <TypingDots /> : null
+        }
+      </div>
+    </div>
+  )
+}
+
+function ResponseItem({ msg, isStreaming }) {
+  if (msg.type === 'chat-user')      return <ChatUserItem text={msg.content} />
+  if (msg.type === 'chat-assistant') return <ChatAssistantItem text={msg.content} isStreaming={isStreaming} />
+
   if (msg.type === 'error') {
     return <div className="feed-response error">{msg.content}</div>
   }
@@ -52,7 +77,7 @@ function ResponseItem({ msg }) {
       </div>
     )
   }
-  if (msg.type === 'summary') {
+  if (msg.type === 'summary' || msg.type === 'stats') {
     return (
       <div className="feed-response summary">
         <div className="feed-markdown">
@@ -61,16 +86,6 @@ function ResponseItem({ msg }) {
       </div>
     )
   }
-  if (msg.type === 'stats') {
-    return (
-      <div className="feed-response stats">
-        <div className="feed-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-        </div>
-      </div>
-    )
-  }
-  // success / info
   return (
     <div className={`feed-response ${msg.type || 'info'}`}>
       <pre className="feed-pre">{msg.content}</pre>
@@ -81,10 +96,9 @@ function ResponseItem({ msg }) {
 // ── Session banner ────────────────────────────────────────────────────────────
 
 function SessionBanner({ session, onDiscard }) {
-  const [elapsed_, setElapsed] = useState(elapsed(session.startedAt))
-
+  const [el, setEl] = useState(elapsed(session.startedAt))
   useEffect(() => {
-    const t = setInterval(() => setElapsed(elapsed(session.startedAt)), 30000)
+    const t = setInterval(() => setEl(elapsed(session.startedAt)), 30000)
     return () => clearInterval(t)
   }, [session.startedAt])
 
@@ -93,37 +107,30 @@ function SessionBanner({ session, onDiscard }) {
       <div className="session-banner-left">
         <span className="session-dot" />
         <span className="session-label">Session active</span>
-        <span className="session-elapsed">{elapsed_}</span>
+        <span className="session-elapsed">{el}</span>
       </div>
-      <button className="session-discard" onClick={onDiscard} title="Discard session">
-        Discard
-      </button>
+      <button className="session-discard" onClick={onDiscard}>Discard</button>
     </div>
   )
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyState({ onExample }) {
+function LogEmptyState({ onExample }) {
   const examples = [
     'bench press 3x5 @ 100kg',
     'squat 4x3 @ 140kg RPE 8',
     'rdl 3x8 @ 90kg, felt solid',
     'run 5km easy pace',
   ]
-
   return (
     <div className="log-empty">
       <div className="log-empty-icon">+</div>
       <h2 className="log-empty-title">Log your workout</h2>
-      <p className="log-empty-sub">
-        Type exercises below. Use <code>/done</code> to close the session.
-      </p>
+      <p className="log-empty-sub">Type exercises below. Use <code>/done</code> to close the session.</p>
       <div className="log-examples">
         {examples.map(ex => (
-          <button key={ex} className="log-example" onClick={() => onExample(ex)}>
-            {ex}
-          </button>
+          <button key={ex} className="log-example" onClick={() => onExample(ex)}>{ex}</button>
         ))}
       </div>
       <div className="log-commands-hint">
@@ -134,18 +141,64 @@ function EmptyState({ onExample }) {
   )
 }
 
+function ChatEmptyState({ onSuggestion }) {
+  const suggestions = [
+    'How has my training been lately?',
+    "What's my progress on bench press?",
+    'Any injury patterns I should watch?',
+    'Am I due for a deload?',
+  ]
+  return (
+    <div className="log-empty">
+      <div className="log-empty-icon">✦</div>
+      <h2 className="log-empty-title">Ask about your training</h2>
+      <p className="log-empty-sub">I have access to your full workout history.</p>
+      <div className="log-examples">
+        {suggestions.map(s => (
+          <button key={s} className="log-example suggestion" onClick={() => onSuggestion(s)}>{s}</button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+
+function ModeToggle({ mode, onChange }) {
+  return (
+    <div className="mode-toggle" role="group" aria-label="Input mode">
+      <button
+        type="button"
+        className={`mode-btn ${mode === 'log' ? 'active' : ''}`}
+        onClick={() => onChange('log')}
+      >
+        Log
+      </button>
+      <button
+        type="button"
+        className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
+        onClick={() => onChange('chat')}
+      >
+        Chat
+      </button>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LogWorkout() {
-  const [feed, setFeed]                       = useState([])
-  const [input, setInput]                     = useState('')
-  const [loading, setLoading]                 = useState(false)
-  const [session, setSession]                 = useState(null)
-  const [pendingClarification, setPending]    = useState(null) // { originalText, partialParse, sessionId }
-  const bottomRef   = useRef(null)
-  const textareaRef = useRef(null)
+  const [feed, setFeed]                    = useState([])
+  const [input, setInput]                  = useState('')
+  const [loading, setLoading]              = useState(false)
+  const [mode, setMode]                    = useState('log')
+  const [session, setSession]              = useState(null)
+  const [pendingClarification, setPending] = useState(null)
+  // Maintained separately so chat context persists across mode switches
+  const chatHistoryRef = useRef([])
+  const bottomRef      = useRef(null)
+  const textareaRef    = useRef(null)
 
-  // Restore session from localStorage on mount
   useEffect(() => {
     const saved = loadSession()
     if (saved) setSession(saved)
@@ -167,11 +220,12 @@ export default function LogWorkout() {
   }
 
   async function getToken() {
-    const { data: { session: authSession } } = await supabase.auth.getSession()
-    const token = authSession?.access_token
-    if (!token) throw new Error('Not authenticated')
-    return token
+    const { data: { session: s } } = await supabase.auth.getSession()
+    if (!s?.access_token) throw new Error('Not authenticated')
+    return s.access_token
   }
+
+  // ── Log mode handlers ───────────────────────────────────────────────────────
 
   async function handleLog(text) {
     const token = await getToken()
@@ -192,46 +246,29 @@ export default function LogWorkout() {
     })
     const data = await res.json()
 
-    if (!res.ok) {
-      addFeed({ type: 'error', content: data.error || 'Something went wrong.' })
-      return
-    }
+    if (!res.ok) { addFeed({ type: 'error', content: data.error || 'Something went wrong.' }); return }
 
     if (!data.ok && data.clarificationNeeded) {
-      setPending({
-        originalText: pendingClarification?.originalText || text,
-        partialParse: data.partialParse,
-        sessionId: data.sessionId,
-      })
-      // Start session if needed
+      setPending({ originalText: pendingClarification?.originalText || text, partialParse: data.partialParse, sessionId: data.sessionId })
       if (!session) {
-        const newSession = { id: data.sessionId, startedAt: new Date().toISOString() }
-        setSession(newSession)
-        saveSession(newSession)
+        const ns = { id: data.sessionId, startedAt: new Date().toISOString() }
+        setSession(ns); saveSession(ns)
       }
       addFeed({ type: 'clarification', content: data.clarificationQuestion || 'Please clarify your input.' })
       return
     }
 
-    if (!data.ok) {
-      addFeed({ type: 'error', content: data.message || 'Could not log workout.' })
-      return
-    }
+    if (!data.ok) { addFeed({ type: 'error', content: data.message || 'Could not log workout.' }); return }
 
-    // Success — start or continue session
     if (!session || session.id !== data.sessionId) {
-      const newSession = { id: data.sessionId, startedAt: new Date().toISOString() }
-      setSession(newSession)
-      saveSession(newSession)
+      const ns = { id: data.sessionId, startedAt: new Date().toISOString() }
+      setSession(ns); saveSession(ns)
     }
     addFeed({ type: 'success', content: data.reply })
   }
 
   async function handleDone(note) {
-    if (!session) {
-      addFeed({ type: 'error', content: 'No active session. Log something first.' })
-      return
-    }
+    if (!session) { addFeed({ type: 'error', content: 'No active session. Log something first.' }); return }
 
     const token = await getToken()
     const res = await fetch('/api/done', {
@@ -241,52 +278,101 @@ export default function LogWorkout() {
     })
     const data = await res.json()
 
-    if (!res.ok) {
-      addFeed({ type: 'error', content: data.error || 'Failed to close session.' })
-      return
-    }
+    if (!res.ok) { addFeed({ type: 'error', content: data.error || 'Failed to close session.' }); return }
 
-    clearSession()
-    setSession(null)
-    setPending(null)
-
-    const header = `Session closed — ${data.sessionType}${data.durationMins ? ` (${data.durationMins} mins)` : ''}\n\n`
-    addFeed({ type: 'summary', content: header + data.summary })
+    clearSession(); setSession(null); setPending(null)
+    addFeed({
+      type: 'summary',
+      content: `Session closed — ${data.sessionType}${data.durationMins ? ` (${data.durationMins} mins)` : ''}\n\n${data.summary}`,
+    })
   }
 
   async function handleStats() {
     const token = await getToken()
-    const res = await fetch('/api/stats', {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
+    const res = await fetch('/api/stats', { headers: { 'Authorization': `Bearer ${token}` } })
     const data = await res.json()
 
-    if (!res.ok) {
-      addFeed({ type: 'error', content: data.error || 'Failed to fetch stats.' })
-      return
-    }
+    if (!res.ok) { addFeed({ type: 'error', content: data.error || 'Failed to fetch stats.' }); return }
 
-    const typeLines = Object.entries(data.byType)
-      .sort((a, b) => b[1] - a[1])
-      .map(([t, n]) => `  ${t}: ${n}`)
-      .join('\n')
+    const typeLines = Object.entries(data.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `  ${t}: ${n}`).join('\n')
+    const topEx = (data.topExercises || []).map(e => `  ${e.name} (${e.count} sets)`).join('\n')
 
-    const topEx = (data.topExercises || [])
-      .map(e => `  ${e.name} (${e.count} sets)`)
-      .join('\n')
-
-    const lines = [
-      `**Last 90 days**`,
-      ``,
+    addFeed({ type: 'stats', content: [
+      `**Last 90 days**`, ``,
       `Sessions: ${data.sessions90d}`,
       typeLines ? `\nBy type:\n${typeLines}` : '',
       topEx ? `\nTop exercises:\n${topEx}` : '',
       data.lastSessionDate ? `\nLast session: ${data.lastSessionDate} (${data.lastSessionType || 'other'})` : '',
       data.totalVolume ? `\nTotal volume: ${data.totalVolume.toLocaleString()} kg` : '',
-    ].filter(l => l !== '').join('\n')
-
-    addFeed({ type: 'stats', content: lines })
+    ].filter(Boolean).join('\n') })
   }
+
+  // ── Chat mode handler ───────────────────────────────────────────────────────
+
+  async function handleChat(text) {
+    const token = await getToken()
+    chatHistoryRef.current = [...chatHistoryRef.current, { role: 'user', content: text }]
+
+    // Add user message and empty assistant placeholder
+    addFeed([
+      { type: 'chat-user', content: text },
+      { type: 'chat-assistant', content: '' },
+    ])
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ messages: chatHistoryRef.current }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      setFeed(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1] = { type: 'chat-assistant', content: 'Something went wrong. Please try again.' }
+        return updated
+      })
+      throw new Error(err.error || `Request failed (${res.status})`)
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullResponse = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') break
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.error) throw new Error(parsed.error)
+          if (parsed.text) {
+            fullResponse += parsed.text
+            setFeed(prev => {
+              const updated = [...prev]
+              updated[updated.length - 1] = { type: 'chat-assistant', content: fullResponse }
+              return updated
+            })
+          }
+        } catch (parseErr) {
+          if (parseErr.message !== 'Unexpected end of JSON input') throw parseErr
+        }
+      }
+    }
+
+    chatHistoryRef.current = [...chatHistoryRef.current, { role: 'assistant', content: fullResponse }]
+  }
+
+  // ── Send dispatcher ─────────────────────────────────────────────────────────
 
   async function send(raw) {
     const trimmed = raw.trim()
@@ -294,21 +380,24 @@ export default function LogWorkout() {
 
     setInput('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    addFeed({ type: 'command', content: trimmed })
     setLoading(true)
 
     try {
-      const lower = trimmed.toLowerCase()
-      if (lower === '/done' || lower.startsWith('/done ')) {
-        await handleDone(trimmed.slice(5).trim() || undefined)
-      } else if (lower === '/stats') {
-        await handleStats()
+      if (mode === 'chat') {
+        await handleChat(trimmed)
       } else {
-        const logText = lower.startsWith('/log ') ? trimmed.slice(5) : trimmed
-        await handleLog(logText)
+        addFeed({ type: 'command', content: trimmed })
+        const lower = trimmed.toLowerCase()
+        if (lower === '/done' || lower.startsWith('/done ')) {
+          await handleDone(trimmed.slice(5).trim() || undefined)
+        } else if (lower === '/stats') {
+          await handleStats()
+        } else {
+          await handleLog(lower.startsWith('/log ') ? trimmed.slice(5) : trimmed)
+        }
       }
     } catch (err) {
-      addFeed({ type: 'error', content: err.message || 'Something went wrong.' })
+      if (mode === 'log') addFeed({ type: 'error', content: err.message || 'Something went wrong.' })
     }
 
     setLoading(false)
@@ -316,33 +405,36 @@ export default function LogWorkout() {
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send(input)
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) }
   }
 
   function discardSession() {
-    clearSession()
-    setSession(null)
-    setPending(null)
+    clearSession(); setSession(null); setPending(null)
     addFeed({ type: 'info', content: 'Session discarded.' })
   }
 
   const isEmpty = feed.length === 0
 
-  const placeholder = pendingClarification
+  const placeholder = mode === 'chat'
+    ? 'Ask about your training…'
+    : pendingClarification
     ? 'Type your answer…'
     : session
     ? 'Log more sets, or /done to finish…'
     : 'bench press 3x5 @ 100kg'
 
+  const hint = mode === 'chat'
+    ? 'Enter to send · Shift+Enter for new line'
+    : 'Enter to send · /done to finish · /stats for summary'
+
   return (
     <div className="log-page">
       {session && <SessionBanner session={session} onDiscard={discardSession} />}
 
-      {isEmpty && !session && (
-        <EmptyState onExample={ex => { setInput(ex); textareaRef.current?.focus() }} />
+      {isEmpty && (
+        mode === 'log'
+          ? <LogEmptyState onExample={ex => { setInput(ex); textareaRef.current?.focus() }} />
+          : <ChatEmptyState onSuggestion={s => send(s)} />
       )}
 
       {!isEmpty && (
@@ -350,11 +442,15 @@ export default function LogWorkout() {
           {feed.map((item, i) =>
             item.type === 'command'
               ? <CommandItem key={i} text={item.content} />
-              : <ResponseItem key={i} msg={item} />
+              : <ResponseItem
+                  key={i}
+                  msg={item}
+                  isStreaming={loading && i === feed.length - 1 && item.type === 'chat-assistant'}
+                />
           )}
-          {loading && (
+          {loading && mode === 'log' && (
             <div className="feed-response info">
-              <span className="typing-dots"><span /><span /><span /></span>
+              <TypingDots />
             </div>
           )}
           <div ref={bottomRef} />
@@ -362,10 +458,8 @@ export default function LogWorkout() {
       )}
 
       <div className="log-input-area">
-        <form
-          className="log-form"
-          onSubmit={e => { e.preventDefault(); send(input) }}
-        >
+        <form className="log-form" onSubmit={e => { e.preventDefault(); send(input) }}>
+          <ModeToggle mode={mode} onChange={m => { setMode(m); textareaRef.current?.focus() }} />
           <textarea
             ref={textareaRef}
             className="log-textarea"
@@ -387,7 +481,7 @@ export default function LogWorkout() {
             </svg>
           </button>
         </form>
-        <p className="log-hint">Enter to send · /done to finish session · /stats for summary</p>
+        <p className="log-hint">{hint}</p>
       </div>
     </div>
   )

@@ -14,7 +14,6 @@ export default function Layout({ children }) {
   const isToday    = pathname === '/today'
   const isLog      = pathname === '/log'
   const isHistory  = pathname === '/'
-  const isChat     = pathname === '/chat'
   const isProgress = pathname === '/progress'
 
   return (
@@ -27,7 +26,6 @@ export default function Layout({ children }) {
           <Link to="/log"      className={`header-tab ${isLog      ? 'active' : ''}`}>Log</Link>
           <Link to="/"         className={`header-tab ${isHistory  ? 'active' : ''}`}>History</Link>
           <Link to="/progress" className={`header-tab ${isProgress ? 'active' : ''}`}>Progress</Link>
-          <Link to="/chat"     className={`header-tab ${isChat     ? 'active' : ''}`}>Chat</Link>
         </nav>
 
         <button className="layout-signout" onClick={handleSignOut}>Sign out</button>
@@ -78,13 +76,6 @@ export default function Layout({ children }) {
           <span>Progress</span>
         </Link>
 
-        <Link to="/chat" className={`bottom-tab ${isChat ? 'active' : ''}`}>
-          {/* Chat bubble icon */}
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M10 2C5.58 2 2 5.13 2 9c0 2.04 1.01 3.87 2.63 5.13L4 18l3.63-1.82C8.36 16.38 9.17 16.5 10 16.5c4.42 0 8-3.13 8-7s-3.58-7-8-7z" fill="currentColor"/>
-          </svg>
-          <span>Chat</span>
-        </Link>
       </nav>
     </div>
   )
