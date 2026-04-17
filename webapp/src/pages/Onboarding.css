@@ -189,6 +189,25 @@
   opacity: 0.45;
 }
 
+/* ── Input with inline unit label ────────────────────────────── */
+
+.ob-input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ob-unit {
+  font-size: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.ob-ft-in {
+  display: flex;
+  gap: 10px;
+}
+
 /* ── Option chips ─────────────────────────────────────────────── */
 
 .ob-options {

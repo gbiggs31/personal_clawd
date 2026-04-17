@@ -7,13 +7,23 @@ const TOTAL_STEPS = 3
 
 // ── Step components ───────────────────────────────────────────────────────────
 
-function StepAboutYou({ data, onChange }) {
+function StepAboutYou({ data, onChange, units, onUnitsChange }) {
   return (
     <div className="ob-step">
       <h2 className="ob-step-title">About you</h2>
       <p className="ob-step-sub">This helps personalise your training plan and today's recommendations.</p>
 
       <div className="ob-fields">
+        <div className="ob-field-row">
+          <label className="ob-label">
+            Units
+          </label>
+          <div className="ob-options">
+            <button type="button" className={`ob-option ${units === 'metric'   ? 'selected' : ''}`} onClick={() => onUnitsChange('metric')}>Metric</button>
+            <button type="button" className={`ob-option ${units === 'imperial' ? 'selected' : ''}`} onClick={() => onUnitsChange('imperial')}>Imperial</button>
+          </div>
+        </div>
+
         <div className="ob-field-row">
           <label className="ob-label">Age</label>
           <input
@@ -43,28 +53,76 @@ function StepAboutYou({ data, onChange }) {
         </div>
 
         <div className="ob-field-row">
-          <label className="ob-label">Height (cm)</label>
-          <input
-            className="ob-input short"
-            type="number"
-            min="100" max="250"
-            placeholder="e.g. 178"
-            value={data.height_cm || ''}
-            onChange={e => onChange('height_cm', e.target.value)}
-          />
+          <label className="ob-label">Height</label>
+          {units === 'metric' ? (
+            <div className="ob-input-with-unit">
+              <input
+                className="ob-input short"
+                type="number"
+                min="100" max="250"
+                placeholder="e.g. 178"
+                value={data.height_cm || ''}
+                onChange={e => onChange('height_cm', e.target.value)}
+              />
+              <span className="ob-unit">cm</span>
+            </div>
+          ) : (
+            <div className="ob-ft-in">
+              <div className="ob-input-with-unit">
+                <input
+                  className="ob-input short"
+                  type="number"
+                  min="3" max="8"
+                  placeholder="5"
+                  value={data.height_ft || ''}
+                  onChange={e => onChange('height_ft', e.target.value)}
+                />
+                <span className="ob-unit">ft</span>
+              </div>
+              <div className="ob-input-with-unit">
+                <input
+                  className="ob-input short"
+                  type="number"
+                  min="0" max="11"
+                  placeholder="10"
+                  value={data.height_in || ''}
+                  onChange={e => onChange('height_in', e.target.value)}
+                />
+                <span className="ob-unit">in</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="ob-field-row">
-          <label className="ob-label">Weight (kg)</label>
-          <input
-            className="ob-input short"
-            type="number"
-            min="30" max="300"
-            step="0.5"
-            placeholder="e.g. 83"
-            value={data.weight_kg || ''}
-            onChange={e => onChange('weight_kg', e.target.value)}
-          />
+          <label className="ob-label">Weight</label>
+          {units === 'metric' ? (
+            <div className="ob-input-with-unit">
+              <input
+                className="ob-input short"
+                type="number"
+                min="30" max="300"
+                step="0.5"
+                placeholder="e.g. 83"
+                value={data.weight_kg || ''}
+                onChange={e => onChange('weight_kg', e.target.value)}
+              />
+              <span className="ob-unit">kg</span>
+            </div>
+          ) : (
+            <div className="ob-input-with-unit">
+              <input
+                className="ob-input short"
+                type="number"
+                min="66" max="660"
+                step="1"
+                placeholder="e.g. 183"
+                value={data.weight_lbs || ''}
+                onChange={e => onChange('weight_lbs', e.target.value)}
+              />
+              <span className="ob-unit">lbs</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -188,8 +246,10 @@ export default function Onboarding() {
   const [step, setStep]     = useState(1)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+  const [units, setUnits]   = useState('metric')
   const [data, setData]     = useState({
     age: '', sex: '', height_cm: '', weight_kg: '',
+    height_ft: '', height_in: '', weight_lbs: '',
     experience_level: '', experience_years: '', training_notes: '',
     goals: '', equipment: '', chronic_injuries: '',
   })
@@ -213,10 +273,23 @@ export default function Onboarding() {
       const token = session?.access_token
       if (!token) throw new Error('Not authenticated')
 
+      // Build metric fields — convert imperial if needed
+      const fields = { ...data }
+      delete fields.height_ft; delete fields.height_in; delete fields.weight_lbs
+
+      if (units === 'imperial') {
+        const ft  = parseFloat(data.height_ft) || 0
+        const ins = parseFloat(data.height_in) || 0
+        if (ft || ins) fields.height_cm = String(Math.round((ft * 12 + ins) * 2.54))
+
+        const lbs = parseFloat(data.weight_lbs)
+        if (lbs) fields.weight_kg = String(Math.round(lbs * 0.453592 * 10) / 10)
+      }
+
       const res = await fetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ fields: data }),
+        body: JSON.stringify({ fields }),
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Failed to save profile')
@@ -240,7 +313,7 @@ export default function Onboarding() {
   }
 
   const stepComponents = [
-    <StepAboutYou key={1} data={data} onChange={handleChange} />,
+    <StepAboutYou key={1} data={data} onChange={handleChange} units={units} onUnitsChange={setUnits} />,
     <StepExperience key={2} data={data} onChange={handleChange} />,
     <StepGoals key={3} data={data} onChange={handleChange} />,
   ]
