@@ -170,6 +170,7 @@ active_cycles: dict[str, Optional[dict]] = {}   # user_id → active cycle (None
 gym_sessions: dict[str, str] = {}               # user_id → session_id (UUID)
 session_start: dict[str, datetime] = {}         # user_id → session start time
 pending_logs: dict[str, dict] = {}              # user_id → {text, partial_parse}
+pending_done: dict[str, dict] = {}             # user_id → session data awaiting type confirmation
 cycle_planning: dict[str, list] = {}            # user_id → planning conversation history
 _user_exercises: dict[str, set[str]] = {}       # user_id → exercise names (for lookup detection)
 _active_users: set[str] = set()                 # cache of confirmed-active user IDs
@@ -556,6 +557,87 @@ async def handle_verbal_edit(
     await update.effective_message.reply_text(reply)
 
 
+# ── Pending done (session type confirmation) ─────────────────────────────────
+
+_SESSION_TYPE_MAP = {
+    "push": "push", "chest": "push", "shoulders": "push", "triceps": "push",
+    "pull": "pull", "back": "pull", "biceps": "pull",
+    "legs": "legs", "leg": "legs", "lower": "legs",
+    "upper": "upper",
+    "full body": "full_body", "full_body": "full_body", "fullbody": "full_body", "full": "full_body",
+    "cardio": "cardio", "conditioning": "cardio",
+    "other": "other",
+}
+
+_SESSION_TYPE_PROMPT = (
+    "Not sure what type of session that was — what would you call it?\n"
+    "Reply with: *push, pull, legs, upper, full body, cardio,* or *other*"
+)
+
+
+async def handle_pending_done(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: str,
+    text: str,
+):
+    """Resolve a session type the classifier was uncertain about, then finish closing."""
+    pending = pending_done.pop(user_id)
+
+    lower = text.lower().strip()
+    session_type = _SESSION_TYPE_MAP.get(lower)
+    if not session_type:
+        for key, val in _SESSION_TYPE_MAP.items():
+            if key in lower:
+                session_type = val
+                break
+    if not session_type:
+        # Still couldn't parse — ask again
+        pending_done[user_id] = pending
+        await update.effective_message.reply_text(
+            "Didn't catch that — reply with: push, pull, legs, upper, full body, cardio, or other"
+        )
+        return
+
+    loop = asyncio.get_event_loop()
+    sheets = await get_sheets()
+
+    session_id = pending["session_id"]
+    duration_mins = pending["duration_mins"]
+    overall_note = pending["overall_note"]
+    session_sets = pending["session_sets"]
+    classification = pending["classification"]
+    classification["session_type"] = session_type
+
+    row = {
+        "session_id": session_id,
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "overall_note": overall_note or "",
+        "duration_mins": duration_mins if duration_mins is not None else "",
+        "session_type": session_type,
+        "cardio_flag": classification.get("cardio_flag", False),
+        "abs_flag": classification.get("abs_flag", False),
+    }
+    await loop.run_in_executor(None, lambda: sheets.append_session(row, int(user_id)))
+
+    dur_str = f" ({duration_mins} mins)" if duration_mins is not None else ""
+    note_str = f"\nNote: {overall_note}" if overall_note else ""
+    flags = [f for f, v in [("cardio", classification.get("cardio_flag")), ("abs", classification.get("abs_flag"))] if v]
+    flags_str = f" + {', '.join(flags)}" if flags else ""
+    await update.effective_message.reply_text(f"Session closed{dur_str} — {session_type}{flags_str}.{note_str}")
+
+    if session_sets:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        summary = await loop.run_in_executor(
+            None,
+            lambda: summarise_session(claude, session_sets, duration_mins, session_type, overall_note),
+        )
+        await loop.run_in_executor(
+            None, lambda: sheets.save_session_summary(session_id, summary, int(user_id))
+        )
+        await update.effective_message.reply_text(summary)
+
+
 # ── Exercise lookup ───────────────────────────────────────────────────────────
 
 def _detect_exercise_lookup(text: str, known_exercises: set[str]) -> Optional[str]:
@@ -676,6 +758,11 @@ async def handle_gym_topic_message(
     """Route a plain-text message received in the Gym topic."""
     loop = asyncio.get_event_loop()
 
+    # Priority 0: waiting for session type confirmation after /done
+    if user_id in pending_done:
+        await handle_pending_done(update, context, user_id, text)
+        return
+
     # Priority 1: active cycle planning conversation
     if user_id in cycle_planning:
         history = cycle_planning[user_id]
@@ -744,6 +831,16 @@ async def handle_gym_query(
         cycle = await get_active_cycle(user_id)
 
         session_text = ""
+        # Recover today's session from DB if the bot was restarted mid-session
+        if user_id not in gym_sessions:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            orphaned_sid = await loop.run_in_executor(
+                None, lambda: sheets.find_orphaned_session(date_str, int(user_id))
+            )
+            if orphaned_sid:
+                gym_sessions[user_id] = orphaned_sid
+                session_start.setdefault(user_id, datetime.now())
+                logger.info(f"Recovered session {orphaned_sid} for gym query (user {user_id})")
         if user_id in gym_sessions:
             session_id = gym_sessions[user_id]
             session_sets = await loop.run_in_executor(
@@ -1294,6 +1391,18 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         classification = await loop.run_in_executor(
             None, lambda: classify_session(claude, exercises)
         )
+
+        # If classifier is uncertain or landed on "other", ask the user before saving
+        if classification.get("uncertain") or classification.get("session_type") == "other":
+            pending_done[user_id] = {
+                "session_id": session_id,
+                "duration_mins": duration_mins,
+                "overall_note": overall_note,
+                "session_sets": session_sets,
+                "classification": classification,
+            }
+            await update.effective_message.reply_text(_SESSION_TYPE_PROMPT, parse_mode="Markdown")
+            return
 
         row = {
             "session_id": session_id,

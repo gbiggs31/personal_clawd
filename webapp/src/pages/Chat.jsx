@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { supabase } from '../utils/supabase.js'
 import './Chat.css'
 
@@ -25,7 +27,11 @@ function Message({ msg, isStreaming }) {
       {!isUser && <div className="msg-avatar">A</div>}
       <div className="msg-bubble">
         {msg.content
-          ? <span className="msg-text">{msg.content}</span>
+          ? isUser
+            ? <span className="msg-text">{msg.content}</span>
+            : <div className="msg-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+              </div>
           : isStreaming ? <TypingDots /> : null
         }
       </div>

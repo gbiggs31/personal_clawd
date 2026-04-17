@@ -149,7 +149,8 @@ Return ONLY valid JSON — no preamble, no fences:
 {
   "session_type": "push | pull | legs | upper | full_body | cardio | other",
   "cardio_flag": boolean,
-  "abs_flag": boolean
+  "abs_flag": boolean,
+  "uncertain": boolean
 }
 
 Definitions:
@@ -159,7 +160,11 @@ Definitions:
 - upper: meaningful mix of push AND pull exercises
 - full_body: includes both upper and lower body compound work
 - cardio: primarily cardiovascular (running, cycling, rowing, elliptical, etc.)
-- other: doesn't fit the above
+- other: doesn't fit the above (use sparingly — only if genuinely unclassifiable)
+
+uncertain: true if you are not confident in the session_type — e.g. exercise names are ambiguous,
+the list is very short (1–2 exercises), or the mix doesn't clearly fit a category.
+When uncertain is true, still populate session_type with your best guess.
 
 cardio_flag: true if ANY cardio exercise is present, regardless of session_type
 abs_flag: true if ANY ab or core isolation work is present (crunches, planks, cable crunches, hanging leg raises, etc.)"""
