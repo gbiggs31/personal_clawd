@@ -456,6 +456,13 @@ async def _do_log(
         session_start[user_id] = datetime.now()
     session_id = gym_sessions[user_id]
 
+    # Delete any existing rows for this message before inserting — prevents duplicates
+    # if Telegram delivers the same update twice (e.g. after a bot restart)
+    message_id = update.effective_message.message_id
+    await loop.run_in_executor(
+        None, lambda: sheets.delete_rows_by_message_id(message_id, int(user_id))
+    )
+
     result = await loop.run_in_executor(
         None,
         lambda: extract_workout(claude, text, partial_parse, clarification),
@@ -480,7 +487,6 @@ async def _do_log(
 
     # Write rows
     date_str = datetime.now().strftime("%Y-%m-%d")
-    message_id = update.effective_message.message_id
     sets = result.get("sets", [])
     rows = _build_set_rows(sets, session_id, date_str, message_id, raw_input=text, extraction_model=EXTRACTION_MODEL)
     await loop.run_in_executor(None, lambda: sheets.append_sets(rows, int(user_id)))
@@ -1118,11 +1124,6 @@ async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     try:
-        loop = asyncio.get_event_loop()
-        sheets = await get_sheets()
-        await loop.run_in_executor(
-            None, lambda: sheets.delete_rows_by_message_id(message_id, int(user_id))
-        )
         await _do_log(update, context, user_id, text)
     except Exception as e:
         logger.exception("Edit handler error")
