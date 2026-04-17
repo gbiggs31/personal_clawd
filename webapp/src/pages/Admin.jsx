@@ -72,13 +72,22 @@ function AddUserForm({ onAdd }) {
   )
 }
 
-function UserRow({ user, onToggleStatus }) {
-  const [loading, setLoading] = useState(false)
+function UserRow({ user, onToggleStatus, onResetOnboarding }) {
+  const [loading, setLoading]           = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetDone, setResetDone]       = useState(false)
 
   async function toggle() {
     setLoading(true)
     await onToggleStatus(user.telegram_user_id, user.status === 'active' ? 'pending' : 'active')
     setLoading(false)
+  }
+
+  async function resetOnboarding() {
+    setResetLoading(true)
+    await onResetOnboarding(user.telegram_user_id)
+    setResetDone(true)
+    setResetLoading(false)
   }
 
   const joined = user.created_at
@@ -100,6 +109,14 @@ function UserRow({ user, onToggleStatus }) {
       </td>
       <td className="user-joined">{joined}</td>
       <td className="user-actions">
+        <button
+          className="admin-btn small secondary"
+          onClick={resetOnboarding}
+          disabled={resetLoading || resetDone}
+          title="Clears profile data so they see onboarding on next login"
+        >
+          {resetDone ? 'Done ✓' : resetLoading ? '…' : 'Re-onboard'}
+        </button>
         <button
           className={`admin-btn small ${user.status === 'active' ? 'danger' : 'secondary'}`}
           onClick={toggle}
@@ -154,6 +171,17 @@ export default function Admin() {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Failed to add user')
     setUsers(prev => [data.user, ...prev])
+  }
+
+  async function resetOnboarding(telegramUserId) {
+    const token = await getToken()
+    const res = await fetch('/api/admin/reset-onboarding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ telegramUserId }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Failed to reset onboarding')
   }
 
   async function toggleStatus(telegramUserId, newStatus) {
@@ -224,6 +252,7 @@ export default function Admin() {
                     key={u.id}
                     user={u}
                     onToggleStatus={toggleStatus}
+                    onResetOnboarding={resetOnboarding}
                   />
                 ))}
               </tbody>
