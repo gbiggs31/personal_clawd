@@ -255,11 +255,16 @@ export default function SessionDetail() {
   const SESSION_TYPES = ['push', 'pull', 'legs', 'upper', 'full_body', 'cardio', 'other']
 
   async function handleUpdateSessionType(newType) {
-    const { error: err } = await supabase
-      .from('sessions')
-      .update({ session_type: newType })
-      .eq('session_id', sessionId)
-    if (!err) {
+    const { data: { session: authSession } } = await supabase.auth.getSession()
+    const token = authSession?.access_token
+    if (!token) return
+
+    const res = await fetch('/api/session', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sessionId, fields: { session_type: newType } }),
+    })
+    if (res.ok) {
       setSession(prev => ({ ...prev, session_type: newType }))
     }
     setEditingType(false)
