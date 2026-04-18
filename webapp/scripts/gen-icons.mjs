@@ -13,32 +13,46 @@ const root = resolve(__dirname, '..')
 mkdirSync(resolve(root, 'public/icons'), { recursive: true })
 
 const src = resolve(root, 'public/icon-source.png')
-const bg  = { r: 0, g: 0, b: 0, alpha: 1 } // black background
+const bg  = { r: 0, g: 0, b: 0, alpha: 1 }
 
-// Standard sizes
-const sizes = [
-  { name: 'icon-192.png',         size: 192 },
-  { name: 'icon-512.png',         size: 512 },
-  { name: 'apple-touch-icon.png', size: 180 },
-]
+/**
+ * Build a sharp pipeline that:
+ *  1. Trims the black border from the source
+ *  2. Resizes the logo to `fillPct`% of the target canvas
+ *  3. Extends back to `canvasSize` × `canvasSize` with a black background
+ */
+async function makeIcon(canvasSize, fillPct) {
+  const logoSize = Math.round(canvasSize * fillPct)
+  const pad      = Math.round((canvasSize - logoSize) / 2)
 
-for (const { name, size } of sizes) {
-  await sharp(src)
-    .flatten({ background: bg })   // fill any transparency with black
-    .resize(size, size, { fit: 'cover' })
+  const buf = await sharp(src)
+    .trim({ background: '#000000', threshold: 20 })
+    .resize(logoSize, logoSize, { fit: 'contain', background: bg })
+    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: bg })
+    // After extend the canvas may be 1–2px off due to rounding — force exact size
+    .resize(canvasSize, canvasSize, { fit: 'cover' })
+    .flatten({ background: bg })
     .png()
-    .toFile(resolve(root, 'public/icons', name))
+    .toBuffer()
+
+  return buf
+}
+
+// Standard icons — logo fills 82% of canvas
+for (const [name, size] of [
+  ['icon-192.png',         192],
+  ['icon-512.png',         512],
+  ['apple-touch-icon.png', 180],
+]) {
+  const buf = await makeIcon(size, 0.82)
+  await sharp(buf).toFile(resolve(root, 'public/icons', name))
   console.log(`✓ ${name}`)
 }
 
-// Maskable icon: Android adaptive icons crop in a circle/squircle.
-// The source already has natural black padding (~20% each side), so
-// resizing to 512x512 keeps the logo safely within the inner 80% safe zone.
-await sharp(src)
-  .flatten({ background: bg })
-  .resize(512, 512, { fit: 'cover' })
-  .png()
-  .toFile(resolve(root, 'public/icons/icon-512-maskable.png'))
+// Maskable icon — logo fills 72% so the artwork stays within the
+// inner-80% safe zone that Android uses when cropping to circle/squircle
+const maskBuf = await makeIcon(512, 0.72)
+await sharp(maskBuf).toFile(resolve(root, 'public/icons/icon-512-maskable.png'))
 console.log('✓ icon-512-maskable.png')
 
 console.log('\nIcons written to public/icons/')
