@@ -30,7 +30,7 @@ async function makeIcon(canvasSize, fillPct) {
     .resize(logoSize, logoSize, { fit: 'contain', background: bg })
     .extend({ top: pad, bottom: pad, left: pad, right: pad, background: bg })
     // After extend the canvas may be 1–2px off due to rounding — force exact size
-    .resize(canvasSize, canvasSize, { fit: 'cover' })
+    .resize(canvasSize, canvasSize, { fit: 'fill' })
     .flatten({ background: bg })
     .png()
     .toBuffer()
