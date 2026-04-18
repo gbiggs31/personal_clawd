@@ -362,7 +362,7 @@ export default function Today() {
                 <button className="today-action-btn secondary" onClick={() => setShowSuggest(true)}>
                   Suggest plan
                 </button>
-                <button className="today-action-btn ghost" onClick={() => navigate('/log', { state: { mode: 'chat' } })}>
+                <button className="today-action-btn secondary" onClick={() => navigate('/log', { state: { mode: 'chat' } })}>
                   Ask coach
                 </button>
               </div>
