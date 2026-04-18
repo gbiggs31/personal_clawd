@@ -2,7 +2,8 @@
   max-width: 640px;
   width: 100%;
   margin: 0 auto;
-  padding: 24px 20px 80px;
+  padding: 24px 20px 100px;
+  /* Extra bottom padding leaves room for the sticky log bar */
 }
 
 /* ── Card ──────────────────────────────────────────────────────── */
@@ -185,8 +186,71 @@
   transform: translateY(-1px);
 }
 
+/* ── Sticky log bar ────────────────────────────────────────────── */
+
+.today-log-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px calc(10px + var(--sab, 0px));
+  background: rgba(9,11,16,0.95);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  z-index: 50;
+}
+
+@media (max-width: 640px) {
+  .today-log-bar {
+    /* Sit above the bottom navigation tabs */
+    bottom: calc(60px + var(--sab, 0px));
+    padding-bottom: 10px;
+  }
+}
+
+.today-log-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #07160f;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 20px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.today-log-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.today-ask-link {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 8px 4px;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.today-ask-link:hover { color: var(--text); }
+
+/* ── Mobile ──────────────────────────────────────────────────── */
+
 @media (max-width: 640px) {
   .today-main {
-    padding: 18px 14px 80px;
+    padding: 18px 14px 180px;
   }
 }

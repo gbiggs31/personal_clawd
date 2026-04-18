@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="108" fill="#090b10"/>
+  <!-- Subtle ambient glow -->
+  <circle cx="340" cy="140" r="200" fill="rgba(141,247,192,0.07)"/>
+  <circle cx="172" cy="160" r="180" fill="rgba(114,184,255,0.05)"/>
+  <!-- A letterform (stroke-based, font-free) -->
+  <g fill="none" stroke="#8df7c0" stroke-width="54" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="256" y1="108" x2="100" y2="420"/>
+    <line x1="256" y1="108" x2="412" y2="420"/>
+    <line x1="161" y1="272" x2="351" y2="272"/>
+  </g>
+</svg>

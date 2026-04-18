@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+import InstallPrompt from './InstallPrompt.jsx'
 import './Layout.css'
 
 export default function Layout({ children }) {
@@ -15,6 +16,11 @@ export default function Layout({ children }) {
       const email = data.session?.user?.email
       if (email) setIsAdmin(email === import.meta.env.VITE_ADMIN_EMAIL)
     })
+
+    // Register service worker for PWA installability
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
+    }
   }, [])
 
   // Close menu when clicking outside
@@ -104,6 +110,8 @@ export default function Layout({ children }) {
           )}
         </div>
       </header>
+
+      <InstallPrompt />
 
       <div className="layout-body">
         {children}

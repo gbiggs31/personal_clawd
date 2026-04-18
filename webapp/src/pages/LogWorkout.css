@@ -1,7 +1,7 @@
 .log-page {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 56px);
+  height: calc(100dvh - 56px - var(--sat, 0px));
   overflow: hidden;
 }
 
@@ -198,6 +198,9 @@
   flex-direction: column;
   gap: 6px;
   scroll-behavior: smooth;
+  /* Smooth momentum scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Command row */
@@ -522,7 +525,7 @@
 
 @media (max-width: 640px) {
   .log-page {
-    height: calc(100dvh - 56px - 60px);
+    height: calc(100dvh - 56px - var(--sat, 0px) - 60px - var(--sab, 0px));
   }
 
   .log-feed {

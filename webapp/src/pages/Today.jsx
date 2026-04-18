@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './Today.css'
 
@@ -27,7 +27,7 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
         </div>
         <div className="today-session-actions">
           <button className="today-refresh-btn" onClick={onRefresh} title="Regenerate plan">↻</button>
-          <Link to="/chat" className="today-chat-btn">Ask Avenra</Link>
+          <Link to="/log" className="today-chat-btn">Ask / Log</Link>
         </div>
       </div>
 
@@ -65,6 +65,7 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
 }
 
 export default function Today() {
+  const navigate = useNavigate()
   const [sessionPlan, setSessionPlan] = useState(null)
   const [planLoading, setPlanLoading] = useState(true)
 
@@ -108,6 +109,20 @@ export default function Today() {
         loading={planLoading}
         onRefresh={() => loadPlan(true)}
       />
+
+      {/* Sticky log CTA — only shown when a plan is loaded */}
+      {sessionPlan && !planLoading && (
+        <div className="today-log-bar">
+          <button className="today-log-btn" onClick={() => navigate('/log')}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <rect x="8.1" y="2" width="1.8" height="14" rx="0.9" fill="currentColor"/>
+              <rect x="2" y="8.1" width="14" height="1.8" rx="0.9" fill="currentColor"/>
+            </svg>
+            Start logging
+          </button>
+          <Link to="/log" className="today-ask-link">Ask a question</Link>
+        </div>
+      )}
     </main>
   )
 }
