@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './Today.css'
@@ -35,6 +35,8 @@ function typeClass(type) {
 function WeekStrip() {
   const [days,     setDays]     = useState([])
   const [expanded, setExpanded] = useState(null)
+  const [stuck,    setStuck]    = useState(false)
+  const sentinelRef = useRef(null)
 
   useEffect(() => {
     async function load() {
@@ -74,12 +76,26 @@ function WeekStrip() {
     load()
   }, [])
 
+  // Detect when the strip becomes sticky (sentinel scrolls out of view)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setStuck(!entry.isIntersecting),
+      { threshold: 0, rootMargin: `-${Math.round(56)}px 0px 0px 0px` }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   if (!days.length) return null
 
   const expandedDay = days.find(d => d.date === expanded)
 
   return (
-    <div className="week-strip">
+    <>
+      <div ref={sentinelRef} style={{ height: 1, marginBottom: -1 }} aria-hidden="true" />
+      <div className={`week-strip${stuck ? ' is-stuck' : ''}`}>
       <div className="week-row">
         {days.map(d => {
           const tClass   = typeClass(d.session?.session_type)
@@ -113,7 +129,8 @@ function WeekStrip() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
