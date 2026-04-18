@@ -145,12 +145,14 @@ export default async function handler(req, res) {
     const exercises = [...new Set(sessionSets.map(s => s.exercise).filter(Boolean))]
     const classifyRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 80,
+      max_tokens: 120,
       system: SESSION_CLASSIFY_SYSTEM,
       messages: [{ role: 'user', content: `Exercises: ${exercises.join(', ')}` }],
     })
     try {
-      classification = JSON.parse(classifyRes.content[0].text.trim())
+      let raw = classifyRes.content[0].text.trim()
+      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+      classification = JSON.parse(raw)
     } catch {
       classification = { session_type: 'other', cardio_flag: false, abs_flag: false, uncertain: true }
     }
