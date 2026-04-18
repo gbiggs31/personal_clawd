@@ -5,6 +5,119 @@
   padding: 24px 20px 120px;
 }
 
+/* ── Week strip ────────────────────────────────────────────────── */
+
+.week-strip {
+  margin-bottom: 14px;
+}
+
+.week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.week-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.week-chip:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.week-chip.active {
+  border-color: rgba(141,247,192,0.35);
+  background: rgba(141,247,192,0.07);
+}
+
+.week-chip:not(:disabled):not(.active):hover {
+  border-color: rgba(255,255,255,0.18);
+}
+
+.week-chip-day {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.week-chip-type {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.week-chip.rest .week-chip-type { color: var(--muted); font-weight: 400; }
+
+/* Session type colour tints */
+.week-chip.type-push  { border-color: rgba(100,160,255,0.25); }
+.week-chip.type-push  .week-chip-type { color: #7eb8ff; }
+.week-chip.type-pull  { border-color: rgba(180,120,255,0.25); }
+.week-chip.type-pull  .week-chip-type { color: #c9a0ff; }
+.week-chip.type-legs  { border-color: rgba(141,247,192,0.25); }
+.week-chip.type-legs  .week-chip-type { color: var(--accent); }
+.week-chip.type-upper { border-color: rgba(255,180,80,0.25); }
+.week-chip.type-upper .week-chip-type { color: #ffb84d; }
+.week-chip.type-full  { border-color: rgba(255,180,80,0.2); }
+.week-chip.type-full  .week-chip-type { color: #ffb84d; }
+.week-chip.type-cardio { border-color: rgba(80,200,255,0.25); }
+.week-chip.type-cardio .week-chip-type { color: #5cc8ff; }
+
+/* Expanded detail */
+.week-detail {
+  margin-top: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.week-detail-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.week-detail-type {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.week-detail-type.type-push  { color: #7eb8ff; }
+.week-detail-type.type-pull  { color: #c9a0ff; }
+.week-detail-type.type-legs  { color: var(--accent); }
+.week-detail-type.type-upper,
+.week-detail-type.type-full  { color: #ffb84d; }
+.week-detail-type.type-cardio { color: #5cc8ff; }
+.week-detail-type.type-other  { color: var(--text); }
+
+.week-detail-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.week-detail-note {
+  font-size: 13px;
+  color: #d4d8df;
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* ── Card ──────────────────────────────────────────────────────── */
 
 .eyebrow {

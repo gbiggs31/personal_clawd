@@ -3,13 +3,118 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './Today.css'
 
-const SESSION_KEY = 'avenra-session'
-const PLAN_KEY    = 'avenra-active-plan'
+const SESSION_KEY   = 'avenra-session'
+const PLAN_KEY      = 'avenra-active-plan'
+const HISTORY_CACHE = 'avenra-history'
 
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) throw new Error('Not authenticated')
   return session.access_token
+}
+
+// Shorten long session type labels for the chip
+function shortType(type) {
+  if (!type) return '—'
+  const map = { 'Upper Body': 'Upper', 'Full Body': 'Full', 'Lower Body': 'Lower' }
+  return map[type] || type
+}
+
+function typeClass(type) {
+  if (!type) return ''
+  const t = type.toLowerCase()
+  if (t.includes('push'))  return 'type-push'
+  if (t.includes('pull'))  return 'type-pull'
+  if (t.includes('leg'))   return 'type-legs'
+  if (t.includes('upper')) return 'type-upper'
+  if (t.includes('full'))  return 'type-full'
+  if (t.includes('cardio') || t.includes('run')) return 'type-cardio'
+  return 'type-other'
+}
+
+function WeekStrip() {
+  const [days,     setDays]     = useState([])
+  const [expanded, setExpanded] = useState(null)
+
+  useEffect(() => {
+    async function load() {
+      // Cache for the calendar day
+      const today = new Date().toISOString().split('T')[0]
+      const cacheKey = `${HISTORY_CACHE}-${today}`
+      const cached = sessionStorage.getItem(cacheKey)
+      if (cached) {
+        try { buildDays(JSON.parse(cached)); return } catch {}
+      }
+      try {
+        const token = await getToken()
+        const res   = await fetch('/api/history', { headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok) return
+        const data = await res.json()
+        sessionStorage.setItem(cacheKey, JSON.stringify(data.sessions || []))
+        buildDays(data.sessions || [])
+      } catch {}
+    }
+
+    function buildDays(sessions) {
+      const map = {}
+      for (const s of sessions) map[s.date] = s
+
+      const result = []
+      for (let i = 0; i < 7; i++) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        const dateStr = d.toISOString().split('T')[0]
+        const label   = i === 0 ? 'Today'
+          : d.toLocaleDateString('en-US', { weekday: 'short' })
+        result.push({ date: dateStr, label, session: map[dateStr] || null })
+      }
+      setDays(result)
+    }
+
+    load()
+  }, [])
+
+  if (!days.length) return null
+
+  const expandedDay = days.find(d => d.date === expanded)
+
+  return (
+    <div className="week-strip">
+      <div className="week-row">
+        {days.map(d => {
+          const tClass   = typeClass(d.session?.session_type)
+          const isActive = expanded === d.date
+          return (
+            <button
+              key={d.date}
+              className={`week-chip ${tClass}${isActive ? ' active' : ''}${!d.session ? ' rest' : ''}`}
+              onClick={() => d.session && setExpanded(isActive ? null : d.date)}
+              disabled={!d.session}
+            >
+              <span className="week-chip-day">{d.label}</span>
+              <span className="week-chip-type">{shortType(d.session?.session_type)}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {expandedDay?.session && (
+        <div className="week-detail">
+          <div className="week-detail-top">
+            <span className={`week-detail-type ${typeClass(expandedDay.session.session_type)}`}>
+              {expandedDay.session.session_type}
+            </span>
+            {expandedDay.session.duration_mins && (
+              <span className="week-detail-meta">{expandedDay.session.duration_mins} min</span>
+            )}
+          </div>
+          {expandedDay.session.overall_note && (
+            <p className="week-detail-note">{expandedDay.session.overall_note}</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function TodaySessionCard({ plan, loading, onRefresh }) {
@@ -165,6 +270,8 @@ export default function Today() {
 
   return (
     <main className="today-main">
+      <WeekStrip />
+
       <TodaySessionCard
         plan={sessionPlan}
         loading={planLoading}
