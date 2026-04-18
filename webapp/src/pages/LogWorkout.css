@@ -5,23 +5,77 @@
   overflow: hidden;
 }
 
-/* ── Session banner ───────────────────────────────────────────── */
+/* ── Session card ─────────────────────────────────────────────── */
 
-.session-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 20px;
+.session-card {
   background: rgba(141, 247, 192, 0.05);
   border-bottom: 1px solid rgba(141, 247, 192, 0.15);
   flex-shrink: 0;
 }
 
-.session-banner-left {
+.session-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  user-select: none;
+}
+
+.session-card-left {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+
+.session-card-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.session-chevron {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.session-exercise-list {
+  padding: 4px 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-ex-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.session-ex-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.session-ex-item.complete   .session-ex-icon { color: var(--accent); }
+.session-ex-item.in-progress .session-ex-icon { color: #ffb84d; }
+.session-ex-item.pending     .session-ex-icon { color: var(--muted); opacity: 0.5; }
+
+.session-ex-name {
+  flex: 1;
+  color: var(--text);
+}
+
+.session-ex-item.complete   .session-ex-name { opacity: 0.6; }
+
+.session-ex-meta {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.7;
 }
 
 .session-dot {

@@ -237,10 +237,18 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Failed to save sets.' })
   }
 
+  const exerciseNames = [...new Set(sets.map(s => s.exercise))]
+  const setsPerExercise = sets.reduce((acc, s) => {
+    acc[s.exercise] = (acc[s.exercise] || 0) + 1
+    return acc
+  }, {})
+
   return res.status(200).json({
     ok: true,
     sessionId,
     reply: formatReply(sets, logUnits),
     sets: sets.length,
+    exerciseNames,
+    setsPerExercise,
   })
 }

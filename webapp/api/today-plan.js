@@ -73,7 +73,9 @@ const SCHEMA = `{
 }`
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
 
   const token = req.headers.authorization?.replace('Bearer ', '')
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
@@ -85,6 +87,34 @@ export default async function handler(req, res) {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Invalid token' })
+
+  // POST: modify an existing plan
+  if (req.method === 'POST') {
+    const { currentPlan, modification } = req.body || {}
+    if (!modification?.trim()) return res.status(400).json({ error: 'No modification provided' })
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: `You are Avenra, an AI strength-training coach. The user wants to modify their training plan for today.
+
+Current plan:
+${JSON.stringify(currentPlan, null, 2)}
+
+Update the plan according to the user's request. Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
+${SCHEMA}`,
+        messages: [{ role: 'user', content: modification.trim() }],
+      })
+      const raw = response.content[0].text.trim()
+      const json = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+      const plan = JSON.parse(json)
+      plan.units = currentPlan?.units || 'metric'
+      return res.status(200).json(plan)
+    } catch (err) {
+      console.error('modify-plan error:', err)
+      return res.status(500).json({ error: 'Failed to update plan' })
+    }
+  }
 
   const { data: authRow } = await supabase
     .from('user_auth')

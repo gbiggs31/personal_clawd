@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { supabase } from '../utils/supabase.js'
 import './LogWorkout.css'
 
-const SESSION_KEY = 'avenra-session'
-const FEED_KEY    = 'avenra-feed'
-const FEED_EXPIRY_MINS = 120 // clear feed after 2 hours of inactivity
+const SESSION_KEY      = 'avenra-session'
+const PLAN_KEY         = 'avenra-active-plan'
+const FEED_KEY         = 'avenra-feed'
+const FEED_EXPIRY_MINS = 120
 
 function loadSession() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
+  try { const r = localStorage.getItem(SESSION_KEY); return r ? JSON.parse(r) : null } catch { return null }
 }
 function saveSession(s) { localStorage.setItem(SESSION_KEY, JSON.stringify(s)) }
-function clearSession() { localStorage.removeItem(SESSION_KEY) }
+function clearSession()  { localStorage.removeItem(SESSION_KEY) }
+
+function loadActivePlan() {
+  try { const r = localStorage.getItem(PLAN_KEY); return r ? JSON.parse(r) : null } catch { return null }
+}
+function saveActivePlan(p) { localStorage.setItem(PLAN_KEY, JSON.stringify(p)) }
+function clearActivePlan() { localStorage.removeItem(PLAN_KEY) }
 
 function loadPersistedFeed() {
   try {
@@ -28,15 +33,19 @@ function loadPersistedFeed() {
 }
 
 function persistFeed(feed, chatHistory) {
-  try {
-    localStorage.setItem(FEED_KEY, JSON.stringify({ feed, chatHistory, savedAt: Date.now() }))
-  } catch {}
+  try { localStorage.setItem(FEED_KEY, JSON.stringify({ feed, chatHistory, savedAt: Date.now() })) } catch {}
 }
 
 function elapsed(startedAt) {
   const mins = Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)
   if (mins < 60) return `${mins}m`
   return `${Math.floor(mins / 60)}h ${mins % 60}m`
+}
+
+// Case-insensitive fuzzy match between two exercise names
+function exerciseMatch(a, b) {
+  const la = a.toLowerCase(), lb = b.toLowerCase()
+  return la === lb || la.includes(lb) || lb.includes(la)
 }
 
 // ── Feed items ────────────────────────────────────────────────────────────────
@@ -111,23 +120,88 @@ function ResponseItem({ msg, isStreaming }) {
   )
 }
 
-// ── Session banner ────────────────────────────────────────────────────────────
+// ── Session card (expandable) ─────────────────────────────────────────────────
 
-function SessionBanner({ session, onDiscard }) {
+function SessionCard({ session, activePlan, onDiscard }) {
+  const [expanded, setExpanded] = useState(false)
   const [el, setEl] = useState(elapsed(session.startedAt))
+
   useEffect(() => {
     const t = setInterval(() => setEl(elapsed(session.startedAt)), 30000)
     return () => clearInterval(t)
   }, [session.startedAt])
 
+  const exercises  = activePlan?.exercises || []
+  const loggedSets = activePlan?.loggedSets || {}
+
+  function getStatus(ex) {
+    let logged = 0
+    for (const [name, count] of Object.entries(loggedSets)) {
+      if (exerciseMatch(name, ex.name)) logged += count
+    }
+    const planned = ex.sets || 1
+    if (logged >= planned) return 'complete'
+    if (logged > 0)        return 'in-progress'
+    return 'pending'
+  }
+
+  function getLogged(ex) {
+    let logged = 0
+    for (const [name, count] of Object.entries(loggedSets)) {
+      if (exerciseMatch(name, ex.name)) logged += count
+    }
+    return logged
+  }
+
+  const completedCount = exercises.filter(ex => getStatus(ex) === 'complete').length
+  const total          = exercises.length
+  const hasExercises   = total > 0
+
+  const summaryLine = hasExercises
+    ? `${completedCount}/${total} exercises · ${el}`
+    : el
+
   return (
-    <div className="session-banner">
-      <div className="session-banner-left">
-        <span className="session-dot" />
-        <span className="session-label">Session active</span>
-        <span className="session-elapsed">{el}</span>
+    <div className={`session-card${expanded ? ' expanded' : ''}`}>
+      <div
+        className="session-card-header"
+        onClick={() => hasExercises && setExpanded(e => !e)}
+        style={{ cursor: hasExercises ? 'pointer' : 'default' }}
+      >
+        <div className="session-card-left">
+          <span className="session-dot" />
+          <span className="session-label">Session active</span>
+          <span className="session-elapsed">{summaryLine}</span>
+        </div>
+        <div className="session-card-right">
+          {hasExercises && (
+            <span className="session-chevron">{expanded ? '▲' : '▼'}</span>
+          )}
+          <button className="session-discard" onClick={e => { e.stopPropagation(); onDiscard() }}>
+            Discard
+          </button>
+        </div>
       </div>
-      <button className="session-discard" onClick={onDiscard}>Discard</button>
+
+      {expanded && hasExercises && (
+        <div className="session-exercise-list">
+          {exercises.map(ex => {
+            const status = getStatus(ex)
+            const logged = getLogged(ex)
+            return (
+              <div key={ex.name} className={`session-ex-item ${status}`}>
+                <span className="session-ex-icon">
+                  {status === 'complete' ? '✓' : status === 'in-progress' ? '◑' : '○'}
+                </span>
+                <span className="session-ex-name">{ex.name}</span>
+                {ex.sets && (
+                  <span className="session-ex-meta">{logged}/{ex.sets} sets</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -144,9 +218,9 @@ const LOG_EXAMPLES = [
 ]
 
 const LOG_COMMANDS = [
-  { cmd: '/done',             label: 'Finish session',      hint: 'Closes & generates summary',    send: true  },
-  { cmd: '/done ',            label: '/done [note]',        hint: 'Add a session note',             send: false },
-  { cmd: '/stats',            label: 'Stats',               hint: '90-day training summary',        send: true  },
+  { cmd: '/done',  label: 'Finish session', hint: 'Closes & generates summary', send: true  },
+  { cmd: '/done ', label: '/done [note]',   hint: 'Add a session note',          send: false },
+  { cmd: '/stats', label: 'Stats',          hint: '90-day training summary',     send: true  },
 ]
 
 function LogEmptyState({ onExample, onSend }) {
@@ -228,14 +302,17 @@ function ModeToggle({ mode, onChange }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LogWorkout() {
+  const location = useLocation()
+
   const [feed, setFeed]                    = useState(() => loadPersistedFeed().feed)
   const [chatHistory, setChatHistory]      = useState(() => loadPersistedFeed().chatHistory)
   const [input, setInput]                  = useState('')
   const [loading, setLoading]              = useState(false)
-  const [mode, setMode]                    = useState('log')
+  const [mode, setMode]                    = useState(() => location.state?.mode === 'chat' ? 'chat' : 'log')
   const [session, setSession]              = useState(null)
+  const [activePlan, setActivePlan]        = useState(null)
   const [pendingClarification, setPending] = useState(null)
-  // Ref mirrors chatHistory state for immediate access inside async handlers
+
   const chatHistoryRef = useRef(null)
   if (chatHistoryRef.current === null) chatHistoryRef.current = loadPersistedFeed().chatHistory
   const bottomRef   = useRef(null)
@@ -244,9 +321,10 @@ export default function LogWorkout() {
   useEffect(() => {
     const saved = loadSession()
     if (saved) setSession(saved)
+    const plan = loadActivePlan()
+    if (plan) setActivePlan(plan)
   }, [])
 
-  // Persist feed + chat history whenever either changes
   useEffect(() => {
     if (feed.length > 0 || chatHistory.length > 0) {
       persistFeed(feed, chatHistory)
@@ -287,9 +365,9 @@ export default function LogWorkout() {
 
     if (pendingClarification) {
       body.clarification = text
-      body.partialParse = pendingClarification.partialParse
-      body.text = pendingClarification.originalText
-      body.sessionId = pendingClarification.sessionId
+      body.partialParse  = pendingClarification.partialParse
+      body.text          = pendingClarification.originalText
+      body.sessionId     = pendingClarification.sessionId
       setPending(null)
     }
 
@@ -318,6 +396,21 @@ export default function LogWorkout() {
       const ns = { id: data.sessionId, startedAt: new Date().toISOString() }
       setSession(ns); saveSession(ns)
     }
+
+    // Update active plan's logged set counts for auto-completion
+    if (data.setsPerExercise) {
+      setActivePlan(prev => {
+        const base = prev || loadActivePlan()
+        if (!base) return prev
+        const updated = { ...base, loggedSets: { ...(base.loggedSets || {}) } }
+        for (const [name, count] of Object.entries(data.setsPerExercise)) {
+          updated.loggedSets[name] = (updated.loggedSets[name] || 0) + count
+        }
+        saveActivePlan(updated)
+        return updated
+      })
+    }
+
     addFeed({ type: 'success', content: data.reply })
   }
 
@@ -334,7 +427,8 @@ export default function LogWorkout() {
 
     if (!res.ok) { addFeed({ type: 'error', content: data.error || 'Failed to close session.' }); return }
 
-    clearSession(); setSession(null); setPending(null)
+    clearSession(); clearActivePlan()
+    setSession(null); setActivePlan(null); setPending(null)
     addFeed({
       type: 'summary',
       content: `Session closed — ${data.sessionType}${data.durationMins ? ` (${data.durationMins} mins)` : ''}\n\n${data.summary}`,
@@ -349,14 +443,14 @@ export default function LogWorkout() {
     if (!res.ok) { addFeed({ type: 'error', content: data.error || 'Failed to fetch stats.' }); return }
 
     const typeLines = Object.entries(data.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `  ${t}: ${n}`).join('\n')
-    const topEx = (data.topExercises || []).map(e => `  ${e.name} (${e.count} sets)`).join('\n')
+    const topEx     = (data.topExercises || []).map(e => `  ${e.name} (${e.count} sets)`).join('\n')
+    const volUnit   = data.units === 'imperial' ? 'lbs' : 'kg'
 
-    const volUnit = data.units === 'imperial' ? 'lbs' : 'kg'
     addFeed({ type: 'stats', content: [
       `**Last 90 days**`, ``,
       `Sessions: ${data.sessions90d}`,
       typeLines ? `\nBy type:\n${typeLines}` : '',
-      topEx ? `\nTop exercises:\n${topEx}` : '',
+      topEx     ? `\nTop exercises:\n${topEx}` : '',
       data.lastSessionDate ? `\nLast session: ${data.lastSessionDate} (${data.lastSessionType || 'other'})` : '',
       data.totalVolume ? `\nTotal volume: ${data.totalVolume.toLocaleString()} ${volUnit}` : '',
     ].filter(Boolean).join('\n') })
@@ -368,9 +462,8 @@ export default function LogWorkout() {
     const token = await getToken()
     updateChatHistory([...chatHistoryRef.current, { role: 'user', content: text }])
 
-    // Add user message and empty assistant placeholder
     addFeed([
-      { type: 'chat-user', content: text },
+      { type: 'chat-user',      content: text },
       { type: 'chat-assistant', content: '' },
     ])
 
@@ -390,10 +483,9 @@ export default function LogWorkout() {
       throw new Error(err.error || `Request failed (${res.status})`)
     }
 
-    const reader = res.body.getReader()
+    const reader  = res.body.getReader()
     const decoder = new TextDecoder()
-    let buffer = ''
-    let fullResponse = ''
+    let buffer = '', fullResponse = ''
 
     while (true) {
       const { done, value } = await reader.read()
@@ -464,7 +556,8 @@ export default function LogWorkout() {
   }
 
   function discardSession() {
-    clearSession(); setSession(null); setPending(null)
+    clearSession(); clearActivePlan()
+    setSession(null); setActivePlan(null); setPending(null)
     addFeed({ type: 'info', content: 'Session discarded.' })
   }
 
@@ -484,7 +577,13 @@ export default function LogWorkout() {
 
   return (
     <div className="log-page">
-      {session && <SessionBanner session={session} onDiscard={discardSession} />}
+      {session && (
+        <SessionCard
+          session={session}
+          activePlan={activePlan}
+          onDiscard={discardSession}
+        />
+      )}
 
       {isEmpty && (
         mode === 'log'

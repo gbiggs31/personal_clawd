@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './Today.css'
+
+const SESSION_KEY = 'avenra-session'
+const PLAN_KEY    = 'avenra-active-plan'
+
+async function getToken() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Not authenticated')
+  return session.access_token
+}
 
 function TodaySessionCard({ plan, loading, onRefresh }) {
   if (loading) {
@@ -25,10 +34,7 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
             {plan.estimatedDurationMin && <span> · ~{plan.estimatedDurationMin} min</span>}
           </div>
         </div>
-        <div className="today-session-actions">
-          <button className="today-refresh-btn" onClick={onRefresh} title="Regenerate plan">↻</button>
-          <Link to="/log" className="today-chat-btn">Ask / Log</Link>
-        </div>
+        <button className="today-refresh-btn" onClick={onRefresh} title="Regenerate plan">↻</button>
       </div>
 
       {plan.exercises?.length > 0 && (
@@ -68,14 +74,20 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
 
 export default function Today() {
   const navigate = useNavigate()
-  const [sessionPlan, setSessionPlan] = useState(null)
-  const [planLoading, setPlanLoading] = useState(true)
+  const [sessionPlan, setSessionPlan]   = useState(null)
+  const [planLoading, setPlanLoading]   = useState(true)
+  const [showModify,  setShowModify]    = useState(false)
+  const [showSuggest, setShowSuggest]   = useState(false)
+  const [modifyText,  setModifyText]    = useState('')
+  const [suggestText, setSuggestText]   = useState('')
+  const [modifying,   setModifying]     = useState(false)
+  const [modifyError, setModifyError]   = useState('')
+
+  const today    = new Date().toISOString().split('T')[0]
+  const cacheKey = `avenra-plan-${today}`
 
   async function loadPlan(forceRefresh = false) {
     setPlanLoading(true)
-    const today = new Date().toISOString().split('T')[0]
-    const cacheKey = `avenra-plan-${today}`
-
     if (!forceRefresh) {
       const cached = sessionStorage.getItem(cacheKey)
       if (cached) {
@@ -84,7 +96,6 @@ export default function Today() {
     } else {
       sessionStorage.removeItem(cacheKey)
     }
-
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) { setPlanLoading(false); return }
@@ -104,6 +115,54 @@ export default function Today() {
 
   useEffect(() => { loadPlan() }, [])
 
+  function beginSession() {
+    const sessionId = crypto.randomUUID()
+    const startedAt = new Date().toISOString()
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ id: sessionId, startedAt }))
+    localStorage.setItem(PLAN_KEY, JSON.stringify({
+      sessionId,
+      startedAt,
+      exercises: sessionPlan?.exercises || [],
+      loggedSets: {},
+    }))
+    navigate('/log')
+  }
+
+  async function submitModification() {
+    if (!modifyText.trim()) return
+    setModifying(true)
+    setModifyError('')
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/today-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPlan: sessionPlan, modification: modifyText }),
+      })
+      if (!res.ok) throw new Error('Failed to update plan')
+      const updated = await res.json()
+      setSessionPlan(updated)
+      sessionStorage.setItem(cacheKey, JSON.stringify(updated))
+      setModifyText('')
+      setShowModify(false)
+    } catch (err) {
+      setModifyError(err.message)
+    }
+    setModifying(false)
+  }
+
+  function submitSuggestion() {
+    const exercises = suggestText.split('\n')
+      .map(l => l.trim()).filter(Boolean)
+      .map((name, i) => ({ name, sets: null, repTargets: null, weightKg: null, isPriority: i === 0 }))
+    if (!exercises.length) return
+    const sessionId = crypto.randomUUID()
+    const startedAt = new Date().toISOString()
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ id: sessionId, startedAt }))
+    localStorage.setItem(PLAN_KEY, JSON.stringify({ sessionId, startedAt, exercises, loggedSets: {} }))
+    navigate('/log')
+  }
+
   return (
     <main className="today-main">
       <TodaySessionCard
@@ -112,17 +171,80 @@ export default function Today() {
         onRefresh={() => loadPlan(true)}
       />
 
-      {/* Sticky log CTA — only shown when a plan is loaded */}
       {sessionPlan && !planLoading && (
-        <div className="today-log-bar">
-          <button className="today-log-btn" onClick={() => navigate('/log')}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <rect x="8.1" y="2" width="1.8" height="14" rx="0.9" fill="currentColor"/>
-              <rect x="2" y="8.1" width="14" height="1.8" rx="0.9" fill="currentColor"/>
-            </svg>
-            Start logging
-          </button>
-          <Link to="/log" className="today-ask-link">Ask a question</Link>
+        <div className="today-actions-section">
+
+          {showModify && (
+            <div className="today-inline-form">
+              <textarea
+                className="today-inline-textarea"
+                placeholder="e.g. swap squats for leg press, add face pulls at the end"
+                value={modifyText}
+                onChange={e => setModifyText(e.target.value)}
+                rows={3}
+                autoFocus
+              />
+              {modifyError && <p className="today-inline-error">{modifyError}</p>}
+              <div className="today-inline-row">
+                <button className="today-inline-cancel" onClick={() => { setShowModify(false); setModifyText(''); setModifyError('') }}>
+                  Cancel
+                </button>
+                <button
+                  className="today-inline-submit"
+                  onClick={submitModification}
+                  disabled={modifying || !modifyText.trim()}
+                >
+                  {modifying ? 'Updating…' : 'Update plan'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showSuggest && (
+            <div className="today-inline-form">
+              <p className="today-inline-label">Enter exercises (one per line)</p>
+              <textarea
+                className="today-inline-textarea"
+                placeholder={'Bench Press\nIncline DB Press\nTricep Pushdown\nCable Fly'}
+                value={suggestText}
+                onChange={e => setSuggestText(e.target.value)}
+                rows={5}
+                autoFocus
+              />
+              <div className="today-inline-row">
+                <button className="today-inline-cancel" onClick={() => { setShowSuggest(false); setSuggestText('') }}>
+                  Cancel
+                </button>
+                <button
+                  className="today-inline-submit"
+                  onClick={submitSuggestion}
+                  disabled={!suggestText.trim()}
+                >
+                  Start with this plan
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!showModify && !showSuggest && (
+            <div className="today-actions">
+              <button className="today-action-btn primary" onClick={beginSession}>
+                Begin session
+              </button>
+              <div className="today-actions-row2">
+                <button className="today-action-btn secondary" onClick={() => setShowModify(true)}>
+                  Modify plan
+                </button>
+                <button className="today-action-btn secondary" onClick={() => setShowSuggest(true)}>
+                  Suggest plan
+                </button>
+                <button className="today-action-btn ghost" onClick={() => navigate('/log', { state: { mode: 'chat' } })}>
+                  Ask coach
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </main>
