@@ -92,6 +92,29 @@ If a known exercises list is provided, apply these rules in order:
 function kgToLbs(kg) { return Math.round(kg * 2.20462) }
 function lbsToKg(lbs) { return Math.round(lbs * 0.453592 * 10) / 10 }
 
+function formatSetSummary(s, logUnits) {
+  const e = s.extras || {}
+
+  // Cardio: show distance/duration/pace instead of weight×reps
+  if (s.weight_kg == null && s.reps == null) {
+    const parts = []
+    if (e.distance_km != null)    parts.push(`${e.distance_km}km`)
+    if (e.duration_mins != null)  parts.push(`${e.duration_mins} min`)
+    if (e.pace_min_per_km != null) parts.push(`${e.pace_min_per_km}/km`)
+    if (parts.length) return parts.join(' · ')
+    return 'logged'
+  }
+
+  // Strength: weight × reps
+  let w = s.weight_kg != null
+    ? (logUnits === 'lbs' ? `${kgToLbs(s.weight_kg)}lbs` : `${s.weight_kg}kg`)
+    : 'bw'
+  const r   = s.reps != null ? s.reps : '?'
+  const rpe = s.rpe != null ? ` @RPE${s.rpe}` : ''
+  const rir = s.rir != null ? ` RIR${s.rir}` : ''
+  return `${w}×${r}${rpe}${rir}`
+}
+
 function formatReply(sets, logUnits = 'kg') {
   const grouped = {}
   for (const s of sets) {
@@ -101,16 +124,7 @@ function formatReply(sets, logUnits = 'kg') {
   }
   const lines = []
   for (const [ex, exSets] of Object.entries(grouped)) {
-    const parts = exSets.map(s => {
-      let w = 'bw'
-      if (s.weight_kg != null) {
-        w = logUnits === 'lbs' ? `${kgToLbs(s.weight_kg)}lbs` : `${s.weight_kg}kg`
-      }
-      const r = s.reps || '?'
-      const rpe = s.rpe != null ? ` @RPE${s.rpe}` : ''
-      const rir = s.rir != null ? ` RIR${s.rir}` : ''
-      return `${w}×${r}${rpe}${rir}`
-    })
+    const parts = exSets.map(s => formatSetSummary(s, logUnits))
     lines.push(`${ex}: ${parts.join(', ')}`)
   }
   return `Logged ${sets.length} set${sets.length !== 1 ? 's' : ''}:\n${lines.join('\n')}`
