@@ -328,16 +328,33 @@ export default function SessionDetail() {
     load()
   }, [sessionId])
 
+  async function getToken() {
+    const { data: { session: s } } = await supabase.auth.getSession()
+    return s?.access_token || null
+  }
+
   async function handleUpdateSet(setId, fields) {
-    const { error: err } = await supabase.from('sets').update(fields).eq('id', setId)
-    if (!err) {
+    const token = await getToken()
+    if (!token) return
+    const res = await fetch('/api/sets', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ setId, fields }),
+    })
+    if (res.ok) {
       setSets(prev => prev.map(s => s.id === setId ? { ...s, ...fields } : s))
     }
   }
 
   async function handleDeleteSet(setId) {
-    const { error: err } = await supabase.from('sets').delete().eq('id', setId)
-    if (!err) {
+    const token = await getToken()
+    if (!token) return
+    const res = await fetch('/api/sets', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ setId }),
+    })
+    if (res.ok) {
       setSets(prev => prev.filter(s => s.id !== setId))
     }
   }
