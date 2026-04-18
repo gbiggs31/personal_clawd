@@ -11,6 +11,8 @@ import SessionDetail from './pages/SessionDetail.jsx'
 import Progress from './pages/Progress.jsx'
 import Admin from './pages/Admin.jsx'
 import Onboarding from './pages/Onboarding.jsx'
+import ProfilePage from './pages/ProfilePage.jsx'
+import GoalsPage from './pages/GoalsPage.jsx'
 
 // Requires a valid session, then checks if onboarding is complete.
 // Caches the result in sessionStorage so the profile check only happens once per session.
@@ -84,6 +86,12 @@ export default function App() {
         } />
         <Route path="/admin" element={
           <RequireAuth><Layout><Admin /></Layout></RequireAuth>
+        } />
+        <Route path="/profile" element={
+          <RequireAuth><Layout><ProfilePage /></Layout></RequireAuth>
+        } />
+        <Route path="/goals" element={
+          <RequireAuth><Layout><GoalsPage /></Layout></RequireAuth>
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -70,6 +70,21 @@ export default function Layout({ children }) {
 
           {menuOpen && (
             <div className="layout-dropdown">
+              <Link to="/profile" className="dropdown-item">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                  <circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M2 13c0-2.761 2.462-5 5.5-5s5.5 2.239 5.5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                Profile
+              </Link>
+              <Link to="/goals" className="dropdown-item">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                  <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <circle cx="7.5" cy="7.5" r="0.75" fill="currentColor"/>
+                </svg>
+                Goals
+              </Link>
               {isAdmin && (
                 <Link to="/admin" className="dropdown-item">
                   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
