@@ -3,6 +3,16 @@ import { createClient } from '@supabase/supabase-js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+function formatSet(s) {
+  const weight = s.weight_kg != null ? `${s.weight_kg}kg` : 'bw'
+  const reps = s.reps || '?'
+  const rpe = s.rpe != null ? s.rpe : '-'
+  const rir = s.rir != null ? s.rir : '-'
+  const note = s.note ? ` // ${s.note}` : ''
+  const injury = s.injury_flag ? ` [INJURY: ${s.injury_body_part || 'unknown'}]` : ''
+  return `  ${s.exercise} #${s.set_num}: ${weight} × ${reps} | RPE ${rpe} | RIR ${rir}${injury}${note}`
+}
+
 function formatHistory(sets, sessions) {
   if (!sets.length && !sessions.length) return 'No workout data in the last 90 days.'
 
@@ -13,6 +23,7 @@ function formatHistory(sets, sessions) {
     sessionSets[sid].push(s)
   }
 
+  const completedIds = new Set(sessions.map(s => String(s.session_id || '')))
   const lines = []
   const sorted = [...sessions].sort((a, b) => String(a.date).localeCompare(String(b.date)))
 
@@ -24,15 +35,16 @@ function formatHistory(sets, sessions) {
     if (sess.summary) lines.push(`  Summary: ${sess.summary}`)
 
     const ssets = (sessionSets[sid] || []).sort((a, b) => (a.set_num || 0) - (b.set_num || 0))
-    for (const s of ssets) {
-      const weight = s.weight_kg != null ? `${s.weight_kg}kg` : 'bw'
-      const reps = s.reps || '?'
-      const rpe = s.rpe != null ? s.rpe : '-'
-      const rir = s.rir != null ? s.rir : '-'
-      const note = s.note ? ` // ${s.note}` : ''
-      const injury = s.injury_flag ? ` [INJURY: ${s.injury_body_part || 'unknown'}]` : ''
-      lines.push(`  ${s.exercise} #${s.set_num}: ${weight} × ${reps} | RPE ${rpe} | RIR ${rir}${injury}${note}`)
-    }
+    for (const s of ssets) lines.push(formatSet(s))
+  }
+
+  // Include sets for any session not yet closed (no sessions row yet)
+  for (const [sid, ssets] of Object.entries(sessionSets)) {
+    if (completedIds.has(sid) || !ssets.length) continue
+    const date = ssets[0].date || 'today'
+    lines.push(`\n[${date} — SESSION IN PROGRESS]`)
+    const inOrder = [...ssets].sort((a, b) => (a.set_num || 0) - (b.set_num || 0))
+    for (const s of inOrder) lines.push(formatSet(s))
   }
 
   return lines.join('\n')
