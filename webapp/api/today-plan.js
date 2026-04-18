@@ -36,6 +36,15 @@ function formatHistory(sets, sessions, units = 'metric') {
   return lines.join('\n')
 }
 
+function formatProfile(p) {
+  const lines = []
+  if (p.experience_level) lines.push(`Level: ${p.experience_level}${p.experience_years ? ` (${p.experience_years})` : ''}`)
+  if (p.training_notes)   lines.push(`Programme / style: ${p.training_notes}`)
+  if (p.equipment)        lines.push(`Equipment: ${p.equipment}`)
+  if (p.chronic_injuries) lines.push(`Chronic injuries: ${p.chronic_injuries}`)
+  return lines.length ? '=== ATHLETE PROFILE ===\n' + lines.join('\n') : ''
+}
+
 function formatCycle(cycle) {
   if (!cycle) return ''
   return [
@@ -93,10 +102,12 @@ export default async function handler(req, res) {
     supabase.from('sets').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
     supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date', { ascending: false }),
     supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
-    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'units'),
+    supabase.from('profile').select('key,value').eq('telegram_user_id', uid)
+      .in('key', ['units', 'training_notes', 'equipment', 'experience_level', 'experience_years', 'chronic_injuries']),
   ])
 
-  const units = profileRows?.[0]?.value || 'metric'
+  const profile = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
+  const units = profile.units || 'metric'
 
   // Fetch canonical coaching state assembled by the Python pipeline
   const { data: programStateRow } = await supabase
@@ -109,6 +120,7 @@ export default async function handler(req, res) {
 
   const historyStr = formatHistory(sets || [], [...(sessions || [])].reverse(), units)
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
+  const profileStr = formatProfile(profile)
 
   // Build the coaching rules/constraints section from canonical state
   const canonicalSection = (() => {
@@ -152,17 +164,18 @@ export default async function handler(req, res) {
 
 ${unitsNote}
 
-${cycleStr ? cycleStr + '\n\n' : ''}=== RECENT TRAINING (last 30 days) ===
+${profileStr ? profileStr + '\n\n' : ''}${cycleStr ? cycleStr + '\n\n' : ''}=== RECENT TRAINING (last 30 days) ===
 ${historyStr}
 
 Today: ${today}
 
 ${canonicalSection ? canonicalSection + '\n\n' : ''}Rules:
-- Infer the logical next session type from the PPL pattern in their history (or their active cycle if present)
+- Follow the athlete's stated programme/style exactly (e.g. if they run PPL, respect that split; if they have a specific structure, follow it)
+- Infer the logical next session from their history and programme notes — do not invent a different structure
 - Target weights should reflect small progressive overload on what they've recently done
-- List 4–6 exercises. The priority lift should be the main compound for the day
+- List 4–6 exercises appropriate for the session type. The priority lift should be the main compound
 - Keep coaching notes specific and actionable (not generic)
-- If there are recent injury flags, address them
+- If there are chronic injuries or recent injury flags, adjust exercise selection and add relevant notes
 - Follow any active coaching rules and constraints exactly — these override generic defaults
 
 Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
