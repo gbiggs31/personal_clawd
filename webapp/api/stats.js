@@ -21,10 +21,13 @@ export default async function handler(req, res) {
   const uid = authRow.telegram_user_id
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  const [{ data: sessions }, { data: sets }] = await Promise.all([
+  const [{ data: sessions }, { data: sets }, { data: profileRows }] = await Promise.all([
     supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date', { ascending: false }),
     supabase.from('sets').select('exercise, weight_kg, reps, date').eq('telegram_user_id', uid).gte('date', cutoff),
+    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'units'),
   ])
+
+  const units = profileRows?.[0]?.value || 'metric'
 
   const sessionList = sessions || []
   const setList = sets || []
@@ -55,11 +58,16 @@ export default async function handler(req, res) {
   // Last session date
   const lastSession = sessionList[0]
 
+  const volumeDisplay = units === 'imperial'
+    ? Math.round(totalVolume * 2.20462)
+    : Math.round(totalVolume)
+
   return res.status(200).json({
     sessions90d: sessionList.length,
     byType,
     topExercises,
-    totalVolume: Math.round(totalVolume),
+    totalVolume: volumeDisplay,
+    units,
     lastSessionDate: lastSession?.date || null,
     lastSessionType: lastSession?.session_type || null,
   })

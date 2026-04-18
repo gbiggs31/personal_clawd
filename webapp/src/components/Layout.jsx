@@ -91,6 +91,13 @@ export default function Layout({ children }) {
                 </svg>
                 Goals
               </Link>
+              <Link to="/preferences" className="dropdown-item">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                  <circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M7.5 1v2M7.5 12v2M1 7.5h2M12 7.5h2M2.9 2.9l1.4 1.4M10.7 10.7l1.4 1.4M2.9 12.1l1.4-1.4M10.7 4.3l1.4-1.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                Preferences
+              </Link>
               {isAdmin && (
                 <Link to="/admin" className="dropdown-item">
                   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">

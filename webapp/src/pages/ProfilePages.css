@@ -316,6 +316,15 @@ details[open] .pp-plan-summary::before {
 }
 .pp-markdown h1:first-child, .pp-markdown h2:first-child { margin-top: 0; }
 
+/* ── Preference note ──────────────────────────────────────────── */
+
+.pp-pref-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  opacity: 0.7;
+}
+
 /* ── States ───────────────────────────────────────────────────── */
 
 .pp-loading {

@@ -40,7 +40,9 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
                 {ex.isPriority && <span className="today-priority-badge">Priority</span>}
               </div>
               <div className="today-exercise-prescription">
-                {ex.weightKg != null ? `${ex.weightKg}kg` : 'BW'}
+                {ex.weightKg != null
+                  ? `${ex.weightKg}${plan.units === 'imperial' ? 'lbs' : 'kg'}`
+                  : 'BW'}
                 {' · '}
                 {ex.sets} sets
                 {' · '}

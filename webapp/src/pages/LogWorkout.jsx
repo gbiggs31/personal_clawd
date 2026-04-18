@@ -351,13 +351,14 @@ export default function LogWorkout() {
     const typeLines = Object.entries(data.byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => `  ${t}: ${n}`).join('\n')
     const topEx = (data.topExercises || []).map(e => `  ${e.name} (${e.count} sets)`).join('\n')
 
+    const volUnit = data.units === 'imperial' ? 'lbs' : 'kg'
     addFeed({ type: 'stats', content: [
       `**Last 90 days**`, ``,
       `Sessions: ${data.sessions90d}`,
       typeLines ? `\nBy type:\n${typeLines}` : '',
       topEx ? `\nTop exercises:\n${topEx}` : '',
       data.lastSessionDate ? `\nLast session: ${data.lastSessionDate} (${data.lastSessionType || 'other'})` : '',
-      data.totalVolume ? `\nTotal volume: ${data.totalVolume.toLocaleString()} kg` : '',
+      data.totalVolume ? `\nTotal volume: ${data.totalVolume.toLocaleString()} ${volUnit}` : '',
     ].filter(Boolean).join('\n') })
   }
 

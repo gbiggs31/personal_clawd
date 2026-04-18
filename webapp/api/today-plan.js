@@ -3,7 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-function formatHistory(sets, sessions) {
+function kgToLbs(kg) { return Math.round(kg * 2.20462) }
+
+function formatHistory(sets, sessions, units = 'metric') {
   if (!sets.length && !sessions.length) return 'No workout data.'
 
   const sessionSets = {}
@@ -23,7 +25,9 @@ function formatHistory(sets, sessions) {
 
     const ssets = (sessionSets[sid] || []).sort((a, b) => (a.set_num || 0) - (b.set_num || 0))
     for (const s of ssets) {
-      const weight = s.weight_kg != null ? `${s.weight_kg}kg` : 'bw'
+      const weight = s.weight_kg != null
+        ? units === 'imperial' ? `${kgToLbs(s.weight_kg)}lbs` : `${s.weight_kg}kg`
+        : 'bw'
       const rpe = s.rpe != null ? ` RPE${s.rpe}` : ''
       const injury = s.injury_flag ? ' [INJURY]' : ''
       lines.push(`  ${s.exercise} #${s.set_num}: ${weight} × ${s.reps || '?'}${rpe}${injury}`)
@@ -85,11 +89,14 @@ export default async function handler(req, res) {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const today = new Date().toISOString().split('T')[0]
 
-  const [{ data: sets }, { data: sessions }, { data: cycles }] = await Promise.all([
+  const [{ data: sets }, { data: sessions }, { data: cycles }, { data: profileRows }] = await Promise.all([
     supabase.from('sets').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
     supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date', { ascending: false }),
     supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
+    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'units'),
   ])
+
+  const units = profileRows?.[0]?.value || 'metric'
 
   // Fetch canonical coaching state assembled by the Python pipeline
   const { data: programStateRow } = await supabase
@@ -100,7 +107,7 @@ export default async function handler(req, res) {
 
   const canonicalState = programStateRow?.state_json || {}
 
-  const historyStr = formatHistory(sets || [], [...(sessions || [])].reverse())
+  const historyStr = formatHistory(sets || [], [...(sessions || [])].reverse(), units)
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
 
   // Build the coaching rules/constraints section from canonical state
@@ -137,7 +144,13 @@ export default async function handler(req, res) {
     return lines.join('\n')
   })()
 
+  const unitsNote = units === 'imperial'
+    ? 'The user prefers imperial units. The training history above has been converted to lbs. Set weightKg values in lbs (even though the field is named weightKg). Include coaching notes in lbs.'
+    : 'The user prefers metric units. Set weightKg values in kg.'
+
   const systemPrompt = `You are Avenra, an AI strength-training coach. Generate a training plan for today based on the user's recent history.
+
+${unitsNote}
 
 ${cycleStr ? cycleStr + '\n\n' : ''}=== RECENT TRAINING (last 30 days) ===
 ${historyStr}
@@ -167,6 +180,9 @@ ${SCHEMA}`
     // Strip markdown code fences if present
     const json = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
     const plan = JSON.parse(json)
+
+    // Attach units to the plan so the frontend can display correctly
+    plan.units = units
 
     res.setHeader('Cache-Control', 'no-store')
     return res.status(200).json(plan)

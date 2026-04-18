@@ -3,8 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-function formatSet(s) {
-  const weight = s.weight_kg != null ? `${s.weight_kg}kg` : 'bw'
+function kgToLbs(kg) { return Math.round(kg * 2.20462) }
+
+function formatWeight(weight_kg, units) {
+  if (weight_kg == null) return 'bw'
+  return units === 'imperial' ? `${kgToLbs(weight_kg)}lbs` : `${weight_kg}kg`
+}
+
+function formatSet(s, units = 'metric') {
+  const weight = formatWeight(s.weight_kg, units)
   const reps = s.reps || '?'
   const rpe = s.rpe != null ? s.rpe : '-'
   const rir = s.rir != null ? s.rir : '-'
@@ -13,7 +20,7 @@ function formatSet(s) {
   return `  ${s.exercise} #${s.set_num}: ${weight} × ${reps} | RPE ${rpe} | RIR ${rir}${injury}${note}`
 }
 
-function formatHistory(sets, sessions) {
+function formatHistory(sets, sessions, units = 'metric') {
   if (!sets.length && !sessions.length) return 'No workout data in the last 90 days.'
 
   const sessionSets = {}
@@ -35,7 +42,7 @@ function formatHistory(sets, sessions) {
     if (sess.summary) lines.push(`  Summary: ${sess.summary}`)
 
     const ssets = (sessionSets[sid] || []).sort((a, b) => (a.set_num || 0) - (b.set_num || 0))
-    for (const s of ssets) lines.push(formatSet(s))
+    for (const s of ssets) lines.push(formatSet(s, units))
   }
 
   // Include sets for any session not yet closed (no sessions row yet)
@@ -44,7 +51,7 @@ function formatHistory(sets, sessions) {
     const date = ssets[0].date || 'today'
     lines.push(`\n[${date} — SESSION IN PROGRESS]`)
     const inOrder = [...ssets].sort((a, b) => (a.set_num || 0) - (b.set_num || 0))
-    for (const s of inOrder) lines.push(formatSet(s))
+    for (const s of inOrder) lines.push(formatSet(s, units))
   }
 
   return lines.join('\n')
@@ -88,18 +95,26 @@ export default async function handler(req, res) {
   const uid = authRow.telegram_user_id
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  const [{ data: sets }, { data: sessions }, { data: cycles }] = await Promise.all([
+  const [{ data: sets }, { data: sessions }, { data: cycles }, { data: profileRows }] = await Promise.all([
     supabase.from('sets').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
     supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
     supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
+    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'units'),
   ])
 
-  const historyStr = formatHistory(sets || [], sessions || [])
+  const units = profileRows?.[0]?.value || 'metric'
+  const unitsNote = units === 'imperial'
+    ? 'The user prefers imperial units. Express all weights in lbs and heights in ft/in.'
+    : 'The user prefers metric units. Express all weights in kg and heights in cm.'
+
+  const historyStr = formatHistory(sets || [], sessions || [], units)
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
 
   const system = `You are Avenra, an AI training assistant embedded in the user's workout log web app.
 
 Answer questions about their training concisely and directly. Reference specific numbers, dates, and exercises from their log. Surface patterns, trends, and anything worth noting. Keep responses focused — the user can ask follow-up questions.
+
+${unitsNote}
 
 ${cycleStr ? cycleStr + '\n\n' : ''}=== TRAINING HISTORY (last 90 days) ===
 ${historyStr}`
