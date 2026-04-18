@@ -23,14 +23,14 @@ const bg  = { r: 0, g: 0, b: 0, alpha: 1 }
  */
 async function makeIcon(canvasSize, fillPct) {
   const logoSize = Math.round(canvasSize * fillPct)
-  const pad      = Math.round((canvasSize - logoSize) / 2)
+  const totalPad = canvasSize - logoSize
+  const padA     = Math.floor(totalPad / 2)
+  const padB     = totalPad - padA   // padA or padA+1, handles odd remainders
 
   const buf = await sharp(src)
     .trim({ background: '#000000', threshold: 20 })
     .resize(logoSize, logoSize, { fit: 'contain', background: bg })
-    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: bg })
-    // After extend the canvas may be 1–2px off due to rounding — force exact size
-    .resize(canvasSize, canvasSize, { fit: 'fill' })
+    .extend({ top: padA, bottom: padB, left: padA, right: padB, background: bg })
     .flatten({ background: bg })
     .png()
     .toBuffer()
