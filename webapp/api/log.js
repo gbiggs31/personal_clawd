@@ -89,7 +89,10 @@ If a known exercises list is provided, apply these rules in order:
    set confidence < 0.75 and ask: "Is '[logged name]' the same exercise as '[known name]', or a separate one?"
 3. **Clearly new** — no close match exists in the known list: use the name as written at full confidence.`
 
-function formatReply(sets) {
+function kgToLbs(kg) { return Math.round(kg * 2.20462) }
+function lbsToKg(lbs) { return Math.round(lbs * 0.453592 * 10) / 10 }
+
+function formatReply(sets, logUnits = 'kg') {
   const grouped = {}
   for (const s of sets) {
     const ex = s.exercise || 'Unknown'
@@ -99,7 +102,10 @@ function formatReply(sets) {
   const lines = []
   for (const [ex, exSets] of Object.entries(grouped)) {
     const parts = exSets.map(s => {
-      const w = s.weight_kg != null ? `${s.weight_kg}kg` : 'bw'
+      let w = 'bw'
+      if (s.weight_kg != null) {
+        w = logUnits === 'lbs' ? `${kgToLbs(s.weight_kg)}lbs` : `${s.weight_kg}kg`
+      }
       const r = s.reps || '?'
       const rpe = s.rpe != null ? ` @RPE${s.rpe}` : ''
       const rir = s.rir != null ? ` RIR${s.rir}` : ''
@@ -135,6 +141,17 @@ export default async function handler(req, res) {
   const sessionId = incomingSessionId || crypto.randomUUID()
   const today = new Date().toISOString().split('T')[0]
 
+  // Fetch user's default logging unit preference
+  const { data: profileRows } = await supabase
+    .from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'log_units')
+  const logUnits = profileRows?.[0]?.value || 'kg'
+
+  // Inject the default unit assumption into the extraction prompt
+  const unitRule = logUnits === 'lbs'
+    ? 'When a weight is given with no unit, treat it as lbs and convert to kg for weight_kg (divide by 2.20462, round to 1 decimal). Weights explicitly marked kg stay as kg; weights explicitly marked lbs are also converted to kg.'
+    : 'When a weight is given with no unit, treat it as kg.'
+  const extractionSystem = EXTRACTION_SYSTEM + `\n\n### Default weight unit\n${unitRule}`
+
   // Build prompt — second-pass clarification or fresh parse
   let userContent
   if (partialParse && clarification) {
@@ -159,7 +176,7 @@ export default async function handler(req, res) {
   const parseResponse = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
-    system: EXTRACTION_SYSTEM,
+    system: extractionSystem,
     messages: [{ role: 'user', content: userContent }],
   })
 
@@ -223,7 +240,7 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok: true,
     sessionId,
-    reply: formatReply(sets),
+    reply: formatReply(sets, logUnits),
     sets: sets.length,
   })
 }
