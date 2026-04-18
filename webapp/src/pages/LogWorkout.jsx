@@ -5,6 +5,8 @@ import { supabase } from '../utils/supabase.js'
 import './LogWorkout.css'
 
 const SESSION_KEY = 'avenra-session'
+const FEED_KEY    = 'avenra-feed'
+const FEED_EXPIRY_MINS = 120 // clear feed after 2 hours of inactivity
 
 function loadSession() {
   try {
@@ -14,6 +16,22 @@ function loadSession() {
 }
 function saveSession(s) { localStorage.setItem(SESSION_KEY, JSON.stringify(s)) }
 function clearSession() { localStorage.removeItem(SESSION_KEY) }
+
+function loadPersistedFeed() {
+  try {
+    const raw = localStorage.getItem(FEED_KEY)
+    if (!raw) return { feed: [], chatHistory: [] }
+    const { feed, chatHistory, savedAt } = JSON.parse(raw)
+    if ((Date.now() - savedAt) / 60000 > FEED_EXPIRY_MINS) return { feed: [], chatHistory: [] }
+    return { feed: feed || [], chatHistory: chatHistory || [] }
+  } catch { return { feed: [], chatHistory: [] } }
+}
+
+function persistFeed(feed, chatHistory) {
+  try {
+    localStorage.setItem(FEED_KEY, JSON.stringify({ feed, chatHistory, savedAt: Date.now() }))
+  } catch {}
+}
 
 function elapsed(startedAt) {
   const mins = Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)
@@ -210,21 +228,35 @@ function ModeToggle({ mode, onChange }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LogWorkout() {
-  const [feed, setFeed]                    = useState([])
+  const [feed, setFeed]                    = useState(() => loadPersistedFeed().feed)
+  const [chatHistory, setChatHistory]      = useState(() => loadPersistedFeed().chatHistory)
   const [input, setInput]                  = useState('')
   const [loading, setLoading]              = useState(false)
   const [mode, setMode]                    = useState('log')
   const [session, setSession]              = useState(null)
   const [pendingClarification, setPending] = useState(null)
-  // Maintained separately so chat context persists across mode switches
-  const chatHistoryRef = useRef([])
-  const bottomRef      = useRef(null)
-  const textareaRef    = useRef(null)
+  // Ref mirrors chatHistory state for immediate access inside async handlers
+  const chatHistoryRef = useRef(null)
+  if (chatHistoryRef.current === null) chatHistoryRef.current = loadPersistedFeed().chatHistory
+  const bottomRef   = useRef(null)
+  const textareaRef = useRef(null)
 
   useEffect(() => {
     const saved = loadSession()
     if (saved) setSession(saved)
   }, [])
+
+  // Persist feed + chat history whenever either changes
+  useEffect(() => {
+    if (feed.length > 0 || chatHistory.length > 0) {
+      persistFeed(feed, chatHistory)
+    }
+  }, [feed, chatHistory])
+
+  function updateChatHistory(msgs) {
+    chatHistoryRef.current = msgs
+    setChatHistory(msgs)
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -333,7 +365,7 @@ export default function LogWorkout() {
 
   async function handleChat(text) {
     const token = await getToken()
-    chatHistoryRef.current = [...chatHistoryRef.current, { role: 'user', content: text }]
+    updateChatHistory([...chatHistoryRef.current, { role: 'user', content: text }])
 
     // Add user message and empty assistant placeholder
     addFeed([
@@ -391,7 +423,7 @@ export default function LogWorkout() {
       }
     }
 
-    chatHistoryRef.current = [...chatHistoryRef.current, { role: 'assistant', content: fullResponse }]
+    updateChatHistory([...chatHistoryRef.current, { role: 'assistant', content: fullResponse }])
   }
 
   // ── Send dispatcher ─────────────────────────────────────────────────────────
