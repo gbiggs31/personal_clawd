@@ -71,7 +71,7 @@ export default function PreferencesPage() {
   async function requestDeletion() {
     try {
       const token = await getToken()
-      const res = await fetch('/api/request-deletion', {
+      const res = await fetch('/api/user-actions?action=request-deletion', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })

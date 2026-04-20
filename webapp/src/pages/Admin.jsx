@@ -146,7 +146,7 @@ export default function Admin() {
     setError('')
     try {
       const token = await getToken()
-      const res = await fetch('/api/admin/users', {
+      const res = await fetch('/api/admin?resource=users', {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.status === 403) { setForbidden(true); return }
@@ -163,7 +163,7 @@ export default function Admin() {
 
   async function addUser({ firstName, lastName, email }) {
     const token = await getToken()
-    const res = await fetch('/api/admin/users', {
+    const res = await fetch('/api/admin?resource=users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ firstName, lastName, email }),
@@ -175,7 +175,7 @@ export default function Admin() {
 
   async function resetOnboarding(telegramUserId) {
     const token = await getToken()
-    const res = await fetch('/api/admin/reset-onboarding', {
+    const res = await fetch('/api/admin?action=reset-onboarding', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ telegramUserId }),
@@ -186,7 +186,7 @@ export default function Admin() {
 
   async function toggleStatus(telegramUserId, newStatus) {
     const token = await getToken()
-    const res = await fetch('/api/admin/users', {
+    const res = await fetch('/api/admin?resource=users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ telegramUserId, status: newStatus }),

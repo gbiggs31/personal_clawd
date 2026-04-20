@@ -22,7 +22,7 @@ export default function StravaContextCard() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) return
 
-        const res = await fetch('/api/strava/status', {
+        const res = await fetch('/api/strava?action=status', {
           headers: { Authorization: `Bearer ${session.access_token}` },
         })
         if (!res.ok) return

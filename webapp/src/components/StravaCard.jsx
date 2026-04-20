@@ -33,7 +33,7 @@ export default function StravaCard({ onConnected }) {
     setError('')
     try {
       const token = await getToken()
-      const res = await fetch('/api/strava/status', {
+      const res = await fetch('/api/strava?action=status', {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error('Failed to load status')
@@ -48,7 +48,7 @@ export default function StravaCard({ onConnected }) {
     setError('')
     try {
       const token = await getToken()
-      const res = await fetch('/api/strava/connect', {
+      const res = await fetch('/api/strava?action=connect', {
         method:  'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -66,7 +66,7 @@ export default function StravaCard({ onConnected }) {
     setError('')
     try {
       const token = await getToken()
-      const res = await fetch('/api/strava/sync', {
+      const res = await fetch('/api/strava?action=sync', {
         method:  'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -85,7 +85,7 @@ export default function StravaCard({ onConnected }) {
     setError('')
     try {
       const token = await getToken()
-      const res = await fetch('/api/strava/disconnect', {
+      const res = await fetch('/api/strava?action=disconnect', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body:    JSON.stringify({ deleteData }),

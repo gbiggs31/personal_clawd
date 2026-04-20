@@ -20,7 +20,7 @@ Add these to your Vercel project (Settings → Environment Variables):
 |---|---|---|
 | `STRAVA_CLIENT_ID` | from Strava app settings | |
 | `STRAVA_CLIENT_SECRET` | from Strava app settings | Keep secret |
-| `STRAVA_REDIRECT_URI` | `https://getavenra.com/api/strava/callback` | Must match exactly |
+| `STRAVA_REDIRECT_URI` | `https://getavenra.com/api/strava?action=callback` | Must match exactly |
 | `STRAVA_WEBHOOK_VERIFY_TOKEN` | any random string | e.g. `openssl rand -hex 20` |
 | `STRAVA_ENCRYPTION_KEY` | 64-char hex string | Generate: `openssl rand -hex 32` |
 | `STRAVA_APP_URL` | `https://getavenra.com` | Used for post-OAuth redirects |
@@ -28,6 +28,8 @@ Add these to your Vercel project (Settings → Environment Variables):
 
 > **Important:** `STRAVA_REDIRECT_URI` must be an exact match — Strava rejects mismatches.
 > For local development, use a different app or ngrok tunnel with its own redirect URI.
+>
+> **Note:** All Strava routes are consolidated into `/api/strava` (Vercel Hobby plan has a 12-function limit). Actions dispatch via `?action=` query param.
 
 ## 3. Register the Webhook Subscription
 
@@ -37,7 +39,7 @@ Run this once after deploying to production (replace values):
 curl -X POST https://www.strava.com/api/v3/push_subscriptions \
   -F client_id=YOUR_CLIENT_ID \
   -F client_secret=YOUR_CLIENT_SECRET \
-  -F callback_url=https://getavenra.com/api/strava/webhook \
+  -F callback_url=https://getavenra.com/api/strava?action=webhook \
   -F verify_token=YOUR_STRAVA_WEBHOOK_VERIFY_TOKEN
 ```
 

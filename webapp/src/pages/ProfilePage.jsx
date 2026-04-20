@@ -186,7 +186,7 @@ export default function ProfilePage() {
       // Trigger initial backfill in the background
       supabase.auth.getSession().then(({ data }) => {
         if (data.session?.access_token) {
-          fetch('/api/strava/sync?all=1', {
+          fetch('/api/strava?action=sync&all=1', {
             method:  'POST',
             headers: { Authorization: `Bearer ${data.session.access_token}` },
           }).catch(() => {})

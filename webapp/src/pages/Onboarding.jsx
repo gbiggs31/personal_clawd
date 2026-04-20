@@ -318,7 +318,7 @@ export default function Onboarding() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (token) {
-        await fetch('/api/consent', {
+        await fetch('/api/user-actions?action=consent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
