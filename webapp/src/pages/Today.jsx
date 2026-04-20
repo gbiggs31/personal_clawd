@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+import StravaContextCard from '../components/StravaContextCard.jsx'
 import './Today.css'
 
 const SESSION_KEY   = 'avenra-session'
@@ -288,6 +289,8 @@ export default function Today() {
   return (
     <main className="today-main">
       <WeekStrip />
+
+      <StravaContextCard />
 
       <TodaySessionCard
         plan={sessionPlan}

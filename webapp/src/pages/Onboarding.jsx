@@ -1,9 +1,53 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './Onboarding.css'
 
 const TOTAL_STEPS = 3
+
+function StepConsent({ consent, onChange }) {
+  return (
+    <div className="ob-step">
+      <h2 className="ob-step-title">Before you start</h2>
+      <p className="ob-step-sub">Please review and agree to the following to continue.</p>
+
+      <div className="ob-consent-items">
+        <label className="ob-consent-item">
+          <input
+            type="checkbox"
+            checked={consent.privacy}
+            onChange={e => onChange('privacy', e.target.checked)}
+          />
+          <span>
+            I agree to the{' '}
+            <Link to="/privacy" target="_blank" className="ob-link">Privacy Policy</Link>
+          </span>
+        </label>
+
+        <label className="ob-consent-item">
+          <input
+            type="checkbox"
+            checked={consent.terms}
+            onChange={e => onChange('terms', e.target.checked)}
+          />
+          <span>
+            I agree to the{' '}
+            <Link to="/terms" target="_blank" className="ob-link">Terms of Use</Link>
+          </span>
+        </label>
+
+        <label className="ob-consent-item">
+          <input
+            type="checkbox"
+            checked={consent.beta}
+            onChange={e => onChange('beta', e.target.checked)}
+          />
+          <span>I understand this is a beta product and not medical advice</span>
+        </label>
+      </div>
+    </div>
+  )
+}
 
 // ── Step components ───────────────────────────────────────────────────────────
 
@@ -243,10 +287,11 @@ function StepGoals({ data, onChange }) {
 
 export default function Onboarding() {
   const navigate = useNavigate()
-  const [step, setStep]     = useState(1)
+  const [step, setStep]     = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const [units, setUnits]   = useState('metric')
+  const [consent, setConsent] = useState({ privacy: false, terms: false, beta: false })
   const [data, setData]     = useState({
     age: '', sex: '', height_cm: '', weight_kg: '',
     height_ft: '', height_in: '', weight_lbs: '',
@@ -259,10 +304,33 @@ export default function Onboarding() {
   }
 
   function canAdvance() {
+    if (step === 0) return consent.privacy && consent.terms && consent.beta
     if (step === 1) return true // all optional on step 1
     if (step === 2) return true // all optional on step 2
     if (step === 3) return data.goals.trim().length > 0
     return false
+  }
+
+  async function handleConsentContinue() {
+    setSaving(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (token) {
+        await fetch('/api/consent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            privacy_accepted: consent.privacy,
+            terms_accepted: consent.terms,
+            beta_acknowledged: consent.beta,
+          }),
+        })
+      }
+    } catch { /* non-blocking */ }
+    setSaving(false)
+    setStep(1)
   }
 
   async function handleFinish() {
@@ -304,15 +372,17 @@ export default function Onboarding() {
   }
 
   function next() {
+    if (step === 0) { handleConsentContinue(); return }
     if (step < TOTAL_STEPS) setStep(s => s + 1)
     else handleFinish()
   }
 
   function back() {
-    if (step > 1) setStep(s => s - 1)
+    if (step > 0) setStep(s => s - 1)
   }
 
   const stepComponents = [
+    <StepConsent key={0} consent={consent} onChange={(k, v) => setConsent(p => ({ ...p, [k]: v }))} />,
     <StepAboutYou key={1} data={data} onChange={handleChange} units={units} onUnitsChange={setUnits} />,
     <StepExperience key={2} data={data} onChange={handleChange} />,
     <StepGoals key={3} data={data} onChange={handleChange} />,
@@ -329,23 +399,25 @@ export default function Onboarding() {
           <p className="ob-welcome">Let's set up your profile</p>
         </div>
 
-        {/* Progress bar */}
-        <div className="ob-progress">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+        {/* Progress bar (only shown for steps 1–3) */}
+        {step > 0 && (
+          <div className="ob-progress">
+            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+              <div
+                key={i}
+                className={`ob-progress-dot ${i + 1 <= step ? 'done' : ''}`}
+              />
+            ))}
             <div
-              key={i}
-              className={`ob-progress-dot ${i + 1 <= step ? 'done' : ''}`}
+              className="ob-progress-bar"
+              style={{ width: `${((step - 1) / (TOTAL_STEPS - 1)) * 100}%` }}
             />
-          ))}
-          <div
-            className="ob-progress-bar"
-            style={{ width: `${((step - 1) / (TOTAL_STEPS - 1)) * 100}%` }}
-          />
-        </div>
+          </div>
+        )}
 
         {/* Step content */}
         <div className="ob-content">
-          {stepComponents[step - 1]}
+          {stepComponents[step]}
         </div>
 
         {error && <p className="ob-error">{error}</p>}
@@ -368,8 +440,8 @@ export default function Onboarding() {
           </button>
         </div>
 
-        {/* Skip */}
-        {!isLastStep && (
+        {/* Skip (not shown on consent step or last step) */}
+        {step > 0 && !isLastStep && (
           <button
             className="ob-skip"
             onClick={() => setStep(s => s + 1)}

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { getStravaContext } from '../lib/strava-context.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -110,13 +111,21 @@ export default async function handler(req, res) {
   const historyStr = formatHistory(sets || [], sessions || [], units)
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
 
+  // Strava context — non-blocking, degrades gracefully if unavailable
+  let stravaContext = null
+  try {
+    stravaContext = await getStravaContext(user.id, supabase)
+  } catch (err) {
+    console.warn('[chat] strava context error (non-fatal):', err.message)
+  }
+
   const system = `You are Avenra, an AI training assistant embedded in the user's workout log web app.
 
 Answer questions about their training concisely and directly. Reference specific numbers, dates, and exercises from their log. Surface patterns, trends, and anything worth noting. Keep responses focused — the user can ask follow-up questions.
 
 ${unitsNote}
 
-${cycleStr ? cycleStr + '\n\n' : ''}=== TRAINING HISTORY (last 90 days) ===
+${stravaContext ? stravaContext + '\n\n' : ''}${cycleStr ? cycleStr + '\n\n' : ''}=== TRAINING HISTORY (last 90 days) ===
 ${historyStr}`
 
   const { messages } = req.body
@@ -124,10 +133,23 @@ ${historyStr}`
     return res.status(400).json({ error: 'No messages provided' })
   }
 
+  // Log the user's message (fire-and-forget)
+  const userMessage = messages[messages.length - 1]
+  if (userMessage?.role === 'user') {
+    supabase.from('chat_messages').insert({
+      telegram_user_id: uid,
+      auth_user_id: user.id,
+      role: 'user',
+      message_length: userMessage.content?.length ?? 0,
+    }).then(() => {})
+  }
+
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders()
+
+  let assistantText = ''
 
   try {
     const stream = anthropic.messages.stream({
@@ -139,11 +161,22 @@ ${historyStr}`
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        assistantText += chunk.delta.text
         res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
       }
     }
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: String(err.message) })}\n\n`)
+  }
+
+  // Log the assistant's reply (fire-and-forget)
+  if (assistantText) {
+    supabase.from('chat_messages').insert({
+      telegram_user_id: uid,
+      auth_user_id: user.id,
+      role: 'assistant',
+      message_length: assistantText.length,
+    }).then(() => {})
   }
 
   res.write('data: [DONE]\n\n')

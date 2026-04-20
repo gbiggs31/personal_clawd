@@ -317,6 +317,40 @@
   margin-top: 12px;
 }
 
+/* ── Consent step ─────────────────────────────────────────────── */
+
+.ob-consent-items {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.ob-consent-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.ob-consent-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.ob-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ── Mobile ───────────────────────────────────────────────────── */
 
 @media (max-width: 480px) {

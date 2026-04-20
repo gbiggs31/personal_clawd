@@ -7,8 +7,9 @@ import './Layout.css'
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const [isAdmin, setIsAdmin]   = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin]         = useState(false)
+  const [menuOpen, setMenuOpen]       = useState(false)
+  const [showAINotice, setShowAINotice] = useState(false)
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -20,6 +21,11 @@ export default function Layout({ children }) {
     // Register service worker for PWA installability
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {})
+    }
+
+    // Show AI processing notice on first visit
+    if (!localStorage.getItem('avenra-ai-notice-shown')) {
+      setShowAINotice(true)
     }
   }, [])
 
@@ -46,6 +52,11 @@ export default function Layout({ children }) {
   const isLog      = pathname === '/log'
   const isHistory  = pathname === '/'
   const isProgress = pathname === '/progress'
+
+  function dismissAINotice() {
+    localStorage.setItem('avenra-ai-notice-shown', '1')
+    setShowAINotice(false)
+  }
 
   return (
     <div className="layout">
@@ -120,9 +131,30 @@ export default function Layout({ children }) {
 
       <InstallPrompt />
 
+      {showAINotice && (
+        <div className="ai-notice-overlay">
+          <div className="ai-notice-modal">
+            <h2 className="ai-notice-title">A note on AI processing</h2>
+            <p className="ai-notice-body">
+              Avenra uses AI to process your workout data. Your inputs may be sent to
+              third-party AI providers (Anthropic, OpenAI) to generate responses.
+            </p>
+            <button className="ai-notice-btn" onClick={dismissAINotice}>Continue</button>
+          </div>
+        </div>
+      )}
+
       <div className="layout-body">
         {children}
       </div>
+
+      <footer className="layout-footer">
+        <span className="layout-footer-disclaimer">Not medical advice. Use your judgment.</span>
+        <div className="layout-footer-links">
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/terms">Terms</Link>
+        </div>
+      </footer>
 
       <nav className="bottom-tabs" aria-label="Mobile navigation">
         <Link to="/today" className={`bottom-tab ${isToday ? 'active' : ''}`}>

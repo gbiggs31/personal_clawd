@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { getStravaContext } from '../lib/strava-context.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -152,6 +153,14 @@ ${SCHEMA}`,
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
   const profileStr = formatProfile(profile)
 
+  // Strava context — non-blocking, degrades gracefully if unavailable
+  let stravaContext = null
+  try {
+    stravaContext = await getStravaContext(user.id, supabase)
+  } catch (err) {
+    console.warn('[today-plan] strava context error (non-fatal):', err.message)
+  }
+
   // Build the coaching rules/constraints section from canonical state
   const canonicalSection = (() => {
     const rules = canonicalState.active_rules || []
@@ -194,7 +203,7 @@ ${SCHEMA}`,
 
 ${unitsNote}
 
-${profileStr ? profileStr + '\n\n' : ''}${cycleStr ? cycleStr + '\n\n' : ''}=== RECENT TRAINING (last 30 days) ===
+${stravaContext ? stravaContext + '\n\n' : ''}${profileStr ? profileStr + '\n\n' : ''}${cycleStr ? cycleStr + '\n\n' : ''}=== RECENT TRAINING (last 30 days) ===
 ${historyStr}
 
 Today: ${today}

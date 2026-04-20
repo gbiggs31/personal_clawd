@@ -2,6 +2,27 @@
   padding: 32px 20px 80px;
 }
 
+/* ── Toast notification ───────────────────────────────────────── */
+
+.pp-toast {
+  position: fixed;
+  top: calc(64px + var(--sat, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 300;
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .pp-inner {
   max-width: 600px;
   margin: 0 auto;

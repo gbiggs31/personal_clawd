@@ -14,6 +14,8 @@ import Onboarding from './pages/Onboarding.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
 import GoalsPage from './pages/GoalsPage.jsx'
 import PreferencesPage from './pages/PreferencesPage.jsx'
+import PrivacyPage from './pages/PrivacyPage.jsx'
+import TermsPage from './pages/TermsPage.jsx'
 
 // Requires a valid session, then checks if onboarding is complete.
 // Caches the result in sessionStorage so the profile check only happens once per session.
@@ -68,6 +70,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
 
         <Route path="/" element={
           <RequireAuth><Layout><Dashboard /></Layout></RequireAuth>

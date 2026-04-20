@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import './ProfilePages.css'
 
@@ -19,12 +20,13 @@ async function getToken() {
 }
 
 export default function PreferencesPage() {
-  const [saved,    setSaved]    = useState(false)
-  const [loading,  setLoading]  = useState(true)
-  const [saving,   setSaving]   = useState(false)
-  const [error,    setError]    = useState('')
-  const [prefs,    setPrefs]    = useState({ units: 'metric', log_units: 'kg' })
-  const [draft,    setDraft]    = useState({ units: 'metric', log_units: 'kg' })
+  const [saved,          setSaved]          = useState(false)
+  const [loading,        setLoading]        = useState(true)
+  const [saving,         setSaving]         = useState(false)
+  const [error,          setError]          = useState('')
+  const [prefs,          setPrefs]          = useState({ units: 'metric', log_units: 'kg' })
+  const [draft,          setDraft]          = useState({ units: 'metric', log_units: 'kg' })
+  const [deleteState,    setDeleteState]    = useState('idle') // 'idle' | 'confirm' | 'done' | 'error'
 
   useEffect(() => {
     async function load() {
@@ -64,6 +66,20 @@ export default function PreferencesPage() {
       setError(err.message)
     }
     setSaving(false)
+  }
+
+  async function requestDeletion() {
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/request-deletion', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error('Request failed')
+      setDeleteState('done')
+    } catch {
+      setDeleteState('error')
+    }
   }
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(prefs)
@@ -143,6 +159,50 @@ export default function PreferencesPage() {
                   {saving ? 'Saving…' : 'Save'}
                 </button>
               </div>
+            </div>
+
+            <div className="pp-section">
+              <h2 className="pp-section-title">Legal</h2>
+              <div className="pp-card">
+                <div className="pp-row">
+                  <span className="pp-label">Privacy Policy</span>
+                  <Link to="/privacy" className="pp-inline-link" style={{ fontSize: 13 }}>View →</Link>
+                </div>
+                <div className="pp-row">
+                  <span className="pp-label">Terms of Use</span>
+                  <Link to="/terms" className="pp-inline-link" style={{ fontSize: 13 }}>View →</Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="pp-section">
+              <h2 className="pp-section-title">Account</h2>
+              <div className="pp-card">
+                <div className="pp-row">
+                  <span className="pp-label">Request account deletion</span>
+                  <div>
+                    {deleteState === 'idle' && (
+                      <button className="pp-btn secondary" onClick={() => setDeleteState('confirm')}>
+                        Request deletion
+                      </button>
+                    )}
+                    {deleteState === 'confirm' && (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, color: 'var(--muted)' }}>Are you sure?</span>
+                        <button className="pp-btn secondary" onClick={() => setDeleteState('idle')}>Cancel</button>
+                        <button className="pp-btn primary" onClick={requestDeletion}>Confirm</button>
+                      </div>
+                    )}
+                    {deleteState === 'done' && (
+                      <span style={{ fontSize: 13, color: 'var(--accent)' }}>Request submitted. We'll respond within 30 days.</span>
+                    )}
+                    {deleteState === 'error' && (
+                      <span style={{ fontSize: 13, color: 'var(--danger)' }}>Something went wrong. Email georgebiggs1@hotmail.com.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <p className="pp-pref-note">We will delete your data within 30 days of your request.</p>
             </div>
           </>
         )}

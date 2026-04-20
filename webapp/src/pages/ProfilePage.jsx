@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+import StravaCard from '../components/StravaCard.jsx'
 import './ProfilePages.css'
 
 const FIELDS = [
@@ -171,6 +173,36 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
+  const [toast,   setToast]   = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Handle Strava OAuth redirect result
+  useEffect(() => {
+    const stravaResult = searchParams.get('strava')
+    if (!stravaResult) return
+
+    if (stravaResult === 'connected') {
+      setToast('Strava connected! Importing your recent activities…')
+      // Trigger initial backfill in the background
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.access_token) {
+          fetch('/api/strava/sync?all=1', {
+            method:  'POST',
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+          }).catch(() => {})
+        }
+      })
+    } else if (stravaResult === 'denied') {
+      setToast('Strava connection cancelled.')
+    } else if (stravaResult === 'error') {
+      setToast(`Strava connection failed (${searchParams.get('reason') || 'unknown error'}).`)
+    }
+
+    // Clean up query params without re-rendering the whole page
+    setSearchParams({}, { replace: true })
+    const timer = setTimeout(() => setToast(''), 5000)
+    return () => clearTimeout(timer)
+  }, [])
 
   async function getToken() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -228,6 +260,9 @@ export default function ProfilePage() {
 
   return (
     <div className="pp-page">
+      {toast && (
+        <div className="pp-toast">{toast}</div>
+      )}
       <div className="pp-inner">
         <div className="pp-header">
           <h1 className="pp-title">Profile</h1>
@@ -273,6 +308,11 @@ export default function ProfilePage() {
             <button className="pp-btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         )}
+
+        <div className="pp-section">
+          <h2 className="pp-section-title">Connected apps</h2>
+          <StravaCard />
+        </div>
       </div>
     </div>
   )

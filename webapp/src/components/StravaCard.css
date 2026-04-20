@@ -1,0 +1,177 @@
+.sc-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.sc-loading {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+
+.sc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sc-strava-logo {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.sc-athlete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sc-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.sc-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.sc-badge.connected    { background: rgba(141,247,192,0.12); color: var(--accent); }
+.sc-badge.disconnected { background: rgba(255,255,255,0.05); color: var(--muted); }
+.sc-badge.stale        { background: rgba(255,180,0,0.12);   color: #f5a623; }
+
+/* ── Description ─────────────────────────────────────────────── */
+
+.sc-description {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+/* ── Sync row ─────────────────────────────────────────────────── */
+
+.sc-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sc-sync-time {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.sc-sync-success {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* ── Error ────────────────────────────────────────────────────── */
+
+.sc-error {
+  font-size: 13px;
+  color: var(--danger);
+  margin-bottom: 10px;
+}
+
+/* ── Actions ──────────────────────────────────────────────────── */
+
+.sc-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sc-btn {
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.sc-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sc-btn.connect {
+  background: #FC4C02;
+  color: #fff;
+  font-weight: 600;
+}
+
+.sc-btn.connect:hover:not(:disabled) { opacity: 0.85; }
+
+.sc-btn.secondary {
+  background: rgba(255,255,255,0.07);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.sc-btn.secondary:hover:not(:disabled) {
+  border-color: rgba(255,255,255,0.2);
+}
+
+.sc-btn.ghost {
+  background: none;
+  color: var(--muted);
+  padding: 7px 10px;
+}
+
+.sc-btn.ghost:hover:not(:disabled) { color: var(--text); }
+
+.sc-btn.danger-ghost {
+  color: var(--danger);
+  opacity: 0.7;
+}
+
+.sc-btn.danger-ghost:hover { opacity: 1; }
+
+.sc-btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ── Confirm dialog ───────────────────────────────────────────── */
+
+.sc-confirm-text {
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.sc-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
