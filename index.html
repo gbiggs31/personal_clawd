@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Avenra — Talk to your gym log</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='108' fill='%23090b10'/><g fill='none' stroke='%238df7c0' stroke-width='54' stroke-linecap='round' stroke-linejoin='round'><line x1='256' y1='108' x2='100' y2='420'/><line x1='256' y1='108' x2='412' y2='420'/><line x1='161' y1='272' x2='351' y2='272'/></g></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -527,6 +527,37 @@
     .bot-status.offline .bot-status-dot  { background: #f87171; }
     .bot-status.offline .bot-status-text { color: #f87171; }
 
+    .strava-callout {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1.75rem;
+      padding: 1rem 1.25rem;
+      border-radius: 16px;
+      border: 1px solid rgba(252,76,2,0.18);
+      background: rgba(252,76,2,0.04);
+    }
+
+    .strava-callout svg { flex-shrink: 0; }
+
+    .strava-callout-text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .strava-callout-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: rgba(252,76,2,0.9);
+      letter-spacing: -0.01em;
+    }
+
+    .strava-callout-sub {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
     .mobile-cta {
       display: none;
     }
@@ -721,6 +752,17 @@
           <div class="card">
             <h3>The system gets more useful over time</h3>
             <p>The longer you use it, the more training context it has to work with.</p>
+          </div>
+        </div>
+
+        <div class="strava-callout">
+          <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 26l5-10 5 10" stroke="#FC4C02" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M22 26l3-6 3 6" stroke="#FC4C02" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+          </svg>
+          <div class="strava-callout-text">
+            <span class="strava-callout-title">Sync with Strava — smarter coaching, more context</span>
+            <span class="strava-callout-sub">Connect once and Avenra factors your cardio, activity load, and recovery into every recommendation.</span>
           </div>
         </div>
       </div>
