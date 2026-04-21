@@ -11,14 +11,19 @@ import {
 } from '../utils/training.js'
 import './Dashboard.css'
 
-const SESSION_TYPES = ['All', 'Push', 'Pull', 'Legs', 'Upper', 'Full Body', 'Other']
-const KNOWN_TYPES   = ['push', 'pull', 'legs', 'upper', 'full body']
-const SORT_OPTIONS  = ['Recent', 'PRs', 'Longest', 'Type']
+const GYM_TYPES   = ['All', 'Push', 'Pull', 'Legs', 'Upper', 'Full Body', 'Other']
+const KNOWN_TYPES = ['push', 'pull', 'legs', 'upper', 'full body']
+const SORT_OPTIONS = ['Recent', 'PRs', 'Longest', 'Type']
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr + 'T00:00:00')
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatIsoDate(isoStr) {
+  if (!isoStr) return ''
+  return new Date(isoStr).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function truncateText(text, max = 140) {
@@ -37,6 +42,52 @@ function DeltaBadge({ delta }) {
       {delta.direction === 'flat' && '= '}
       {delta.text}
     </span>
+  )
+}
+
+function StravaLogo() {
+  return (
+    <svg className="strava-logo-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M17 26l5-10 5 10" fill="none" stroke="#FC4C02" strokeWidth="3" strokeLinejoin="round"/>
+      <path d="M22 26l3-6 3 6" fill="none" stroke="#FC4C02" strokeWidth="3" strokeLinejoin="round" opacity="0.6"/>
+    </svg>
+  )
+}
+
+function StravaSessionCard({ activity }) {
+  const durationMin = Math.round((activity.duration_seconds || 0) / 60)
+  const distanceKm  = activity.distance_meters > 100
+    ? `${(activity.distance_meters / 1000).toFixed(1)} km`
+    : null
+  const elevationM  = activity.elevation_gain_meters > 5
+    ? `↑ ${Math.round(activity.elevation_gain_meters)} m`
+    : null
+  const heartRate   = activity.average_heartrate
+    ? `${Math.round(activity.average_heartrate)} bpm`
+    : null
+
+  const subline = [durationMin ? `${durationMin} min` : null, distanceKm].filter(Boolean).join(' · ')
+  const stats   = [heartRate, elevationM].filter(Boolean)
+
+  return (
+    <div className="session-card strava-card">
+      <div className="session-card-topline">
+        <div>
+          <div className="session-date">{formatIsoDate(activity.start_date)}</div>
+          <div className="session-subline">{subline}</div>
+        </div>
+        <div className="session-tags">
+          <StravaLogo />
+          <span className="tag tag-strava">{activity.sport_type}</span>
+        </div>
+      </div>
+      {activity.name && <p className="session-note">{activity.name}</p>}
+      {stats.length > 0 && (
+        <div className="strava-stats-row">
+          {stats.map(s => <span key={s} className="strava-stat">{s}</span>)}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -193,16 +244,18 @@ function ExerciseHistoryPanel({ normEx, history, onClose, onOpenSession }) {
 export default function Dashboard() {
   const navigate = useNavigate()
 
-  const [sessions, setSessions]           = useState([])
-  const [allSets, setAllSets]             = useState([])
-  const [exerciseMap, setExerciseMap]     = useState({})   // sessionId → [normEx, ...]
-  const [loading, setLoading]             = useState(true)
-  const [error, setError]                 = useState('')
-  const [typeFilter, setTypeFilter]       = useState('All')
-  const [exSearch, setExSearch]           = useState('')
-  const [sortBy, setSortBy]               = useState('Recent')
-  const [expandedIds, setExpandedIds]     = useState(new Set())
-  const [selectedExercise, setSelected]   = useState('')  // normalized key
+  const [sessions, setSessions]               = useState([])
+  const [allSets, setAllSets]                 = useState([])
+  const [exerciseMap, setExerciseMap]         = useState({})   // sessionId → [normEx, ...]
+  const [stravaActivities, setStravaActivities] = useState([])
+  const [stravaConnected, setStravaConnected] = useState(false)
+  const [loading, setLoading]                 = useState(true)
+  const [error, setError]                     = useState('')
+  const [typeFilter, setTypeFilter]           = useState('All')
+  const [exSearch, setExSearch]               = useState('')
+  const [sortBy, setSortBy]                   = useState('Recent')
+  const [expandedIds, setExpandedIds]         = useState(new Set())
+  const [selectedExercise, setSelected]       = useState('')  // normalized key
 
   useEffect(() => {
     async function load() {
@@ -223,7 +276,6 @@ export default function Dashboard() {
 
         if (setErr) { setError(setErr.message); setLoading(false); return }
 
-        // Build exercise map using normalized names for grouping
         const map = {}
         for (const row of setData || []) {
           const sid  = row.session_id
@@ -236,6 +288,21 @@ export default function Dashboard() {
         setExerciseMap(map)
         setAllSets(setData || [])
       }
+
+      // Fetch Strava activities in parallel (non-blocking)
+      try {
+        const { data: { session: authSession } } = await supabase.auth.getSession()
+        if (authSession?.access_token) {
+          const res = await fetch('/api/strava?action=activities', {
+            headers: { Authorization: `Bearer ${authSession.access_token}` },
+          })
+          if (res.ok) {
+            const data = await res.json()
+            setStravaConnected(data.connected || false)
+            setStravaActivities(data.activities || [])
+          }
+        }
+      } catch { /* non-fatal */ }
 
       setLoading(false)
     }
@@ -330,12 +397,14 @@ export default function Dashboard() {
     return lookup
   }, [sessions, setsBySession])
 
-  // Filtered + sorted session list
+  // Filtered + sorted combined list (gym sessions + Strava activities)
   const filtered = useMemo(() => {
-    const query = exSearch.trim().toLowerCase()
+    const query      = exSearch.trim().toLowerCase()
+    const showStrava = !query && (typeFilter === 'All' || typeFilter === 'Strava')
+    const showGym    = typeFilter !== 'Strava'
 
-    let result = sessions.filter(s => {
-      if (typeFilter !== 'All') {
+    const gymItems = showGym ? sessions.filter(s => {
+      if (typeFilter !== 'All' && typeFilter !== 'Strava') {
         const type = (s.session_type || '').toLowerCase()
         if (typeFilter === 'Other') {
           if (KNOWN_TYPES.includes(type)) return false
@@ -348,22 +417,43 @@ export default function Dashboard() {
         if (!exes.some(e => e.includes(query))) return false
       }
       return true
-    })
+    }).map(s => ({ ...s, _type: 'gym' })) : []
 
-    return [...result].sort((a, b) => {
-      if (sortBy === 'Recent')  return new Date(b.date) - new Date(a.date)
-      if (sortBy === 'Longest') return (b.duration_mins || 0) - (a.duration_mins || 0)
-      if (sortBy === 'Type')    return (a.session_type || '').localeCompare(b.session_type || '')
+    const stravaItems = showStrava
+      ? stravaActivities.map(a => ({ ...a, _type: 'strava' }))
+      : []
+
+    return [...gymItems, ...stravaItems].sort((a, b) => {
+      const dateA = a._type === 'gym' ? new Date(a.date) : new Date(a.start_date)
+      const dateB = b._type === 'gym' ? new Date(b.date) : new Date(b.start_date)
+
+      if (sortBy === 'Recent')  return dateB - dateA
+      if (sortBy === 'Longest') {
+        const durA = a._type === 'gym' ? (a.duration_mins || 0) : Math.round((a.duration_seconds || 0) / 60)
+        const durB = b._type === 'gym' ? (b.duration_mins || 0) : Math.round((b.duration_seconds || 0) / 60)
+        return durB !== durA ? durB - durA : dateB - dateA
+      }
+      if (sortBy === 'Type') {
+        const tA = a._type === 'gym' ? (a.session_type || '') : 'Strava'
+        const tB = b._type === 'gym' ? (b.session_type || '') : 'Strava'
+        return tA.localeCompare(tB)
+      }
       if (sortBy === 'PRs') {
-        const aUp = (sessionHighlights[a.session_id] || []).filter(h => h.delta?.direction === 'up').length
-        const bUp = (sessionHighlights[b.session_id] || []).filter(h => h.delta?.direction === 'up').length
-        return bUp !== aUp ? bUp - aUp : new Date(b.date) - new Date(a.date)
+        if (a._type !== b._type) return a._type === 'strava' ? 1 : -1
+        if (a._type === 'gym') {
+          const aUp = (sessionHighlights[a.session_id] || []).filter(h => h.delta?.direction === 'up').length
+          const bUp = (sessionHighlights[b.session_id] || []).filter(h => h.delta?.direction === 'up').length
+          return bUp !== aUp ? bUp - aUp : dateB - dateA
+        }
+        return dateB - dateA
       }
       return 0
     })
-  }, [sessions, exerciseMap, typeFilter, exSearch, sortBy, sessionHighlights])
+  }, [sessions, stravaActivities, exerciseMap, typeFilter, exSearch, sortBy, sessionHighlights])
 
-  const isFiltered = typeFilter !== 'All' || exSearch.trim() || sortBy !== 'Recent'
+  const isFiltered   = typeFilter !== 'All' || exSearch.trim() || sortBy !== 'Recent'
+  const totalEntries = sessions.length + stravaActivities.length
+  const SESSION_TYPES = stravaConnected ? [...GYM_TYPES, 'Strava'] : GYM_TYPES
 
   function toggleSummary(sessionId) {
     setExpandedIds(prev => {
@@ -383,8 +473,10 @@ export default function Dashboard() {
             <h1 className="dash-title">Training log</h1>
             <p className="dash-count">
               {isFiltered
-                ? `${filtered.length} of ${sessions.length} sessions`
-                : `${sessions.length} sessions`}
+                ? `${filtered.length} of ${totalEntries} entries`
+                : sessions.length > 0 && stravaActivities.length > 0
+                  ? `${sessions.length} sessions · ${stravaActivities.length} activities`
+                  : `${sessions.length} sessions`}
             </p>
           </div>
           <Link to="/chat" className="log-chat-btn">Ask Avenra</Link>
@@ -399,10 +491,10 @@ export default function Dashboard() {
               {SESSION_TYPES.map(t => (
                 <button
                   key={t}
-                  className={`type-pill ${typeFilter === t ? 'active' : ''}`}
+                  className={`type-pill ${typeFilter === t ? 'active' : ''} ${t === 'Strava' ? 'strava-pill' : ''}`}
                   onClick={() => setTypeFilter(t)}
                 >
-                  {t}
+                  {t === 'Strava' ? <><StravaLogo />{' Strava'}</> : t}
                 </button>
               ))}
             </div>
@@ -435,23 +527,30 @@ export default function Dashboard() {
         {sessions.length === 0 && !error && (
           <p className="dash-empty">No sessions yet. Log a workout via the bot to see it here.</p>
         )}
-        {sessions.length > 0 && filtered.length === 0 && (
-          <p className="dash-empty">No sessions match these filters.</p>
+        {totalEntries > 0 && filtered.length === 0 && (
+          <p className="dash-empty">No entries match these filters.</p>
         )}
 
         <div className="content-layout">
           <div className="session-list">
-            {filtered.map(s => (
-              <SessionCard
-                key={s.session_id}
-                session={s}
-                exercises={exerciseMap[s.session_id] || []}
-                topHighlights={sessionHighlights[s.session_id] || []}
-                expandedSummaryIds={expandedIds}
-                toggleSummary={toggleSummary}
-                onExerciseClick={setSelected}
-              />
-            ))}
+            {filtered.map(item =>
+              item._type === 'strava' ? (
+                <StravaSessionCard
+                  key={`strava-${item.strava_activity_id}`}
+                  activity={item}
+                />
+              ) : (
+                <SessionCard
+                  key={item.session_id}
+                  session={item}
+                  exercises={exerciseMap[item.session_id] || []}
+                  topHighlights={sessionHighlights[item.session_id] || []}
+                  expandedSummaryIds={expandedIds}
+                  toggleSummary={toggleSummary}
+                  onExerciseClick={setSelected}
+                />
+              )
+            )}
           </div>
 
           <ExerciseHistoryPanel

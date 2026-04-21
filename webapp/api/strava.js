@@ -35,6 +35,7 @@ export default async function handler(req, res) {
     case 'sync':       return handleSync(req, res)
     case 'disconnect': return handleDisconnect(req, res)
     case 'webhook':    return handleWebhook(req, res)
+    case 'activities': return handleActivities(req, res)
     default:           return res.status(400).json({ error: 'Missing or invalid action' })
   }
 }
@@ -385,6 +386,38 @@ async function handleDisconnect(req, res) {
 
   console.log(`[strava/disconnect] disconnected user ${user.id} (deleteData=${deleteData})`)
   return res.status(200).json({ ok: true })
+}
+
+// ── activities ────────────────────────────────────────────────────────────────
+
+async function handleActivities(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const supabase = makeSupabase()
+  const user = await getAuthUser(req, supabase)
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const { data: conn } = await supabase
+    .from('strava_connections')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!conn) return res.status(200).json({ connected: false, activities: [] })
+
+  const { data: activities } = await supabase
+    .from('strava_activities_normalized')
+    .select([
+      'strava_activity_id', 'name', 'sport_type', 'category',
+      'start_date', 'duration_seconds', 'distance_meters',
+      'elevation_gain_meters', 'average_heartrate', 'perceived_load_score',
+    ].join(','))
+    .eq('auth_user_id', user.id)
+    .order('start_date', { ascending: false })
+    .limit(500)
+
+  return res.status(200).json({ connected: true, activities: activities || [] })
 }
 
 // ── webhook ───────────────────────────────────────────────────────────────────
