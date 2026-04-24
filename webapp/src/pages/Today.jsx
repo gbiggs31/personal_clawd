@@ -157,7 +157,7 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
             {plan.estimatedDurationMin && <span> · ~{plan.estimatedDurationMin} min</span>}
           </div>
         </div>
-        <button className="today-refresh-btn" onClick={onRefresh} title="Regenerate plan">↻</button>
+        <button className="today-refresh-btn" onClick={() => onRefresh()} title="Regenerate plan">↻</button>
       </div>
 
       {plan.exercises?.length > 0 && (
@@ -206,19 +206,8 @@ export default function Today() {
   const [modifying,   setModifying]     = useState(false)
   const [modifyError, setModifyError]   = useState('')
 
-  const today    = new Date().toISOString().split('T')[0]
-  const cacheKey = `avenra-plan-${today}`
-
-  async function loadPlan(forceRefresh = false) {
+  async function loadPlan() {
     setPlanLoading(true)
-    if (!forceRefresh) {
-      const cached = sessionStorage.getItem(cacheKey)
-      if (cached) {
-        try { setSessionPlan(JSON.parse(cached)); setPlanLoading(false); return } catch {}
-      }
-    } else {
-      sessionStorage.removeItem(cacheKey)
-    }
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) { setPlanLoading(false); return }
@@ -228,7 +217,6 @@ export default function Today() {
       if (!res.ok) throw new Error(await res.text())
       const plan = await res.json()
       setSessionPlan(plan)
-      sessionStorage.setItem(cacheKey, JSON.stringify(plan))
     } catch (err) {
       console.error('Today plan:', err)
     } finally {
@@ -295,7 +283,7 @@ export default function Today() {
       <TodaySessionCard
         plan={sessionPlan}
         loading={planLoading}
-        onRefresh={() => loadPlan(true)}
+        onRefresh={() => loadPlan()}
       />
 
       {sessionPlan && !planLoading && (
