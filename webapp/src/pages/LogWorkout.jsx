@@ -132,10 +132,17 @@ function SessionCard({ session, activePlan, onDiscard }) {
     return () => clearInterval(t)
   }, [session.startedAt])
 
-  const exercises  = activePlan?.exercises || []
-  const loggedSets = activePlan?.loggedSets || {}
+  // Plan-based mode: exercises come from the plan with target set counts
+  // Free-log mode: exercises come from session.loggedSets (no targets)
+  const hasPlan    = !!activePlan?.exercises?.length
+  const loggedSets = activePlan?.loggedSets || session.loggedSets || {}
+
+  const exercises = hasPlan
+    ? activePlan.exercises
+    : Object.entries(loggedSets).map(([name, count]) => ({ name, sets: null, logged: count }))
 
   function getStatus(ex) {
+    if (!hasPlan) return ex.logged > 0 ? 'in-progress' : 'pending'
     let logged = 0
     for (const [name, count] of Object.entries(loggedSets)) {
       if (exerciseMatch(name, ex.name)) logged += count
@@ -147,6 +154,7 @@ function SessionCard({ session, activePlan, onDiscard }) {
   }
 
   function getLogged(ex) {
+    if (!hasPlan) return ex.logged || 0
     let logged = 0
     for (const [name, count] of Object.entries(loggedSets)) {
       if (exerciseMatch(name, ex.name)) logged += count
@@ -154,12 +162,14 @@ function SessionCard({ session, activePlan, onDiscard }) {
     return logged
   }
 
-  const completedCount = exercises.filter(ex => getStatus(ex) === 'complete').length
+  const completedCount = hasPlan ? exercises.filter(ex => getStatus(ex) === 'complete').length : null
   const total          = exercises.length
   const hasExercises   = total > 0
 
-  const summaryLine = hasExercises
+  const summaryLine = hasPlan && completedCount !== null
     ? `${completedCount}/${total} exercises · ${el}`
+    : hasExercises
+    ? `${total} exercise${total !== 1 ? 's' : ''} · ${el}`
     : el
 
   return (
@@ -192,12 +202,12 @@ function SessionCard({ session, activePlan, onDiscard }) {
             return (
               <div key={ex.name} className={`session-ex-item ${status}`}>
                 <span className="session-ex-icon">
-                  {status === 'complete' ? '✓' : status === 'in-progress' ? '◑' : '○'}
+                  {status === 'complete' ? '✓' : '◑'}
                 </span>
                 <span className="session-ex-name">{ex.name}</span>
-                {ex.sets && (
-                  <span className="session-ex-meta">{logged}/{ex.sets} sets</span>
-                )}
+                <span className="session-ex-meta">
+                  {hasPlan && ex.sets ? `${logged}/${ex.sets} sets` : `${logged} set${logged !== 1 ? 's' : ''}`}
+                </span>
               </div>
             )
           })}
@@ -415,18 +425,29 @@ export default function LogWorkout() {
       setSession(ns); saveSession(ns)
     }
 
-    // Update active plan's logged set counts for auto-completion
+    // Update logged set counts — on the plan if one exists, otherwise on the session itself
     if (data.setsPerExercise) {
-      setActivePlan(prev => {
-        const base = prev || loadActivePlan()
-        if (!base) return prev
-        const updated = { ...base, loggedSets: { ...(base.loggedSets || {}) } }
-        for (const [name, count] of Object.entries(data.setsPerExercise)) {
-          updated.loggedSets[name] = (updated.loggedSets[name] || 0) + count
-        }
-        saveActivePlan(updated)
-        return updated
-      })
+      const plan = loadActivePlan()
+      if (plan) {
+        setActivePlan(prev => {
+          const base = prev || plan
+          const updated = { ...base, loggedSets: { ...(base.loggedSets || {}) } }
+          for (const [name, count] of Object.entries(data.setsPerExercise)) {
+            updated.loggedSets[name] = (updated.loggedSets[name] || 0) + count
+          }
+          saveActivePlan(updated)
+          return updated
+        })
+      } else {
+        setSession(prev => {
+          const updated = { ...prev, loggedSets: { ...(prev.loggedSets || {}) } }
+          for (const [name, count] of Object.entries(data.setsPerExercise)) {
+            updated.loggedSets[name] = (updated.loggedSets[name] || 0) + count
+          }
+          saveSession(updated)
+          return updated
+        })
+      }
     }
 
     addFeed({ type: 'success', content: data.reply })
