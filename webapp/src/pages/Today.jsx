@@ -7,6 +7,37 @@ import './Today.css'
 const SESSION_KEY   = 'avenra-session'
 const PLAN_KEY      = 'avenra-active-plan'
 const HISTORY_CACHE = 'avenra-history'
+const ONBOARDED_KEY = 'avenra-onboarded'
+
+const QUIZ_STEPS = [
+  {
+    key: 'split',
+    question: 'What kind of sessions do you prefer?',
+    options: [
+      { value: 'ppl',       label: 'Push / Pull / Legs', hint: 'Classic 3-way split' },
+      { value: 'full_body', label: 'Full Body',           hint: 'Each session hits everything' },
+      { value: 'upper_lower', label: 'Upper / Lower',    hint: '2-way split' },
+    ],
+  },
+  {
+    key: 'duration',
+    question: 'How long do you have per session?',
+    options: [
+      { value: '30-45',  label: '30 – 45 min', hint: 'Efficient, focused' },
+      { value: '45-60',  label: '45 – 60 min', hint: 'Standard session' },
+      { value: '60-90',  label: '60 – 90 min', hint: 'Full session' },
+    ],
+  },
+  {
+    key: 'goal',
+    question: "What's your main goal?",
+    options: [
+      { value: 'strength', label: 'Build Strength',  hint: 'Heavier lifts, lower reps' },
+      { value: 'muscle',   label: 'Build Muscle',    hint: 'Hypertrophy, volume focus' },
+      { value: 'fitness',  label: 'General Fitness', hint: 'Health & conditioning' },
+    ],
+  },
+]
 
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession()
@@ -198,13 +229,19 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
 export default function Today() {
   const navigate = useNavigate()
   const [sessionPlan, setSessionPlan]   = useState(null)
-  const [planLoading, setPlanLoading]   = useState(true)
+  const [planLoading, setPlanLoading]   = useState(false)
   const [showModify,  setShowModify]    = useState(false)
   const [showSuggest, setShowSuggest]   = useState(false)
   const [modifyText,  setModifyText]    = useState('')
   const [suggestText, setSuggestText]   = useState('')
   const [modifying,   setModifying]     = useState(false)
   const [modifyError, setModifyError]   = useState('')
+
+  // Onboarding flow
+  const [onboardStep, setOnboardStep]   = useState(() => localStorage.getItem(ONBOARDED_KEY) ? null : 'welcome')
+  const [quizStep,    setQuizStep]      = useState(0)
+  const [quizAnswers, setQuizAnswers]   = useState({})
+  const [quizLoading, setQuizLoading]   = useState(false)
 
   async function loadPlan() {
     setPlanLoading(true)
@@ -224,7 +261,51 @@ export default function Today() {
     }
   }
 
-  useEffect(() => { loadPlan() }, [])
+  useEffect(() => {
+    // Only auto-load plan for returning users
+    if (!onboardStep) loadPlan()
+  }, [])
+
+  function completeOnboarding() {
+    localStorage.setItem(ONBOARDED_KEY, '1')
+    setOnboardStep(null)
+  }
+
+  function skipToLog() {
+    completeOnboarding()
+    navigate('/log')
+  }
+
+  async function finishQuiz(answers) {
+    setQuizLoading(true)
+    const splitLabel = { ppl: 'Push/Pull/Legs split', full_body: 'Full body sessions', upper_lower: 'Upper/Lower split' }[answers.split] || ''
+    const goalLabel  = { strength: 'building strength (heavier, lower reps)', muscle: 'building muscle (hypertrophy, volume focus)', fitness: 'general fitness and conditioning' }[answers.goal] || ''
+    const trainingNotes = `${splitLabel}. Sessions typically ${answers.duration} minutes. Goal: ${goalLabel}.`
+    try {
+      const token = await getToken()
+      await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fields: { training_notes: trainingNotes } }),
+      })
+    } catch {}
+    completeOnboarding()
+    setOnboardStep('plan')
+    await loadPlan()
+    setOnboardStep(null)
+    setQuizLoading(false)
+  }
+
+  function selectQuizOption(value) {
+    const step  = QUIZ_STEPS[quizStep]
+    const next  = { ...quizAnswers, [step.key]: value }
+    setQuizAnswers(next)
+    if (quizStep < QUIZ_STEPS.length - 1) {
+      setQuizStep(q => q + 1)
+    } else {
+      finishQuiz(next)
+    }
+  }
 
   function beginSession() {
     const sessionId = crypto.randomUUID()
@@ -253,7 +334,6 @@ export default function Today() {
       if (!res.ok) throw new Error('Failed to update plan')
       const updated = await res.json()
       setSessionPlan(updated)
-      sessionStorage.setItem(cacheKey, JSON.stringify(updated))
       setModifyText('')
       setShowModify(false)
     } catch (err) {
@@ -274,6 +354,80 @@ export default function Today() {
     navigate('/log')
   }
 
+  // ── Onboarding: welcome screen ──────────────────────────────────
+  if (onboardStep === 'welcome') {
+    return (
+      <main className="today-main">
+        <section className="onboard-card">
+          <div className="onboard-logo">Ave<span>nra</span></div>
+          <h1 className="onboard-title">Welcome to Avenra</h1>
+          <p className="onboard-sub">Your AI training coach</p>
+          <ul className="onboard-features">
+            <li><span className="onboard-check">✓</span> Build today's workout from your history</li>
+            <li><span className="onboard-check">✓</span> Log sets in plain English</li>
+            <li><span className="onboard-check">✓</span> Adapt based on how you're progressing</li>
+          </ul>
+          <div className="onboard-actions">
+            <button className="today-action-btn primary" onClick={() => setOnboardStep('quiz')}>
+              Generate My First Workout
+            </button>
+            <button className="today-action-btn ghost" onClick={skipToLog}>
+              I already have a programme
+            </button>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  // ── Onboarding: quiz ────────────────────────────────────────────
+  if (onboardStep === 'quiz') {
+    const step = QUIZ_STEPS[quizStep]
+    return (
+      <main className="today-main">
+        <section className="onboard-card quiz">
+          <div className="onboard-quiz-progress">
+            {QUIZ_STEPS.map((_, i) => (
+              <div key={i} className={`onboard-quiz-dot${i <= quizStep ? ' active' : ''}`} />
+            ))}
+          </div>
+          <h2 className="onboard-quiz-question">{step.question}</h2>
+          <div className="onboard-quiz-options">
+            {step.options.map(opt => (
+              <button
+                key={opt.value}
+                className="onboard-quiz-option"
+                onClick={() => selectQuizOption(opt.value)}
+                disabled={quizLoading}
+              >
+                <span className="onboard-quiz-label">{opt.label}</span>
+                <span className="onboard-quiz-hint">{opt.hint}</span>
+              </button>
+            ))}
+          </div>
+          {quizStep > 0 && (
+            <button className="onboard-back" onClick={() => setQuizStep(q => q - 1)}>← Back</button>
+          )}
+        </section>
+      </main>
+    )
+  }
+
+  // ── Onboarding: generating plan ─────────────────────────────────
+  if (onboardStep === 'plan') {
+    return (
+      <main className="today-main">
+        <section className="onboard-card">
+          <div className="onboard-generating">
+            <div className="onboard-spinner" />
+            <p>Building your first workout…</p>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  // ── Normal returning-user view ──────────────────────────────────
   return (
     <main className="today-main">
       <WeekStrip />
@@ -345,6 +499,9 @@ export default function Today() {
             <div className="today-actions">
               <button className="today-action-btn primary" onClick={beginSession}>
                 Begin session
+              </button>
+              <button className="today-action-btn ghost" onClick={() => navigate('/log')}>
+                Open log and add an exercise
               </button>
               <div className="today-actions-row2">
                 <button className="today-action-btn secondary" onClick={() => setShowModify(true)}>
