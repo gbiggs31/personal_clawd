@@ -20,11 +20,14 @@ export default async function handler(req, res) {
   const action = req.query.action
 
   // Cron path — method POST with x-cron-secret header, no action required
-  if (
-    req.method === 'POST' &&
-    process.env.CRON_SECRET &&
-    req.headers['x-cron-secret'] === process.env.CRON_SECRET
-  ) {
+  if (req.method === 'POST' && !action) {
+    if (!process.env.CRON_SECRET) {
+      console.error('[strava/cron] CRON_SECRET env var not set')
+      return res.status(500).json({ error: 'Cron not configured' })
+    }
+    if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     return runCronSync(res)
   }
 
@@ -255,11 +258,22 @@ async function handleSync(req, res) {
 }
 
 async function syncUser(authUserId, supabase, forceBackfill = false) {
-  await supabase
+  // Atomic advisory lock: only proceed if no sync started in the last 10 minutes.
+  // This prevents duplicate work when cron overlaps with manual sync or a prior slow cron run.
+  const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  const { data: lockRow } = await supabase
     .from('strava_connections')
     .update({ last_attempted_sync_at: new Date().toISOString() })
     .eq('auth_user_id', authUserId)
     .eq('is_active', true)
+    .or(`last_attempted_sync_at.is.null,last_attempted_sync_at.lt.${tenMinsAgo}`)
+    .select('auth_user_id')
+    .maybeSingle()
+
+  if (!lockRow) {
+    console.log(`[strava/sync] skipping ${authUserId} — sync already in progress or recently completed`)
+    return { ok: true, imported: 0, skipped: true }
+  }
 
   const { data: conn } = await supabase
     .from('strava_connections')

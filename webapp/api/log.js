@@ -155,6 +155,16 @@ export default async function handler(req, res) {
   const sessionId = incomingSessionId || crypto.randomUUID()
   const today = new Date().toISOString().split('T')[0]
 
+  // Rate limit: 150 sets per day (protects against scripted abuse)
+  const { count: setsToday } = await supabase
+    .from('sets')
+    .select('*', { count: 'exact', head: true })
+    .eq('telegram_user_id', uid)
+    .eq('date', today)
+  if ((setsToday ?? 0) >= 150) {
+    return res.status(429).json({ error: 'Daily logging limit reached. Please try again tomorrow.' })
+  }
+
   // Fetch user's default logging unit preference
   const { data: profileRows } = await supabase
     .from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'log_units')
@@ -187,13 +197,19 @@ export default async function handler(req, res) {
     }
   }
 
-  const parseResponse = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: extractionSystem,
-    messages: [{ role: 'user', content: userContent }],
-  })
+  const parseResponse = await anthropic.messages.create(
+    {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system: extractionSystem,
+      messages: [{ role: 'user', content: userContent }],
+    },
+    { signal: AbortSignal.timeout(30_000) }
+  )
 
+  if (!parseResponse.content?.length) {
+    return res.status(500).json({ error: 'No response from AI. Please try again.' })
+  }
   let raw = parseResponse.content[0].text.trim()
   if (raw.startsWith('```')) {
     raw = raw.split('\n').slice(1).join('\n')

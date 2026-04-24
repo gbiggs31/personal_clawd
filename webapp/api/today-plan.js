@@ -94,18 +94,22 @@ export default async function handler(req, res) {
     const { currentPlan, modification } = req.body || {}
     if (!modification?.trim()) return res.status(400).json({ error: 'No modification provided' })
     try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: `You are Avenra, an AI strength-training coach. The user wants to modify their training plan for today.
+      const response = await anthropic.messages.create(
+        {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          system: `You are Avenra, an AI strength-training coach. The user wants to modify their training plan for today.
 
 Current plan:
 ${JSON.stringify(currentPlan, null, 2)}
 
 Update the plan according to the user's request. Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
 ${SCHEMA}`,
-        messages: [{ role: 'user', content: modification.trim() }],
-      })
+          messages: [{ role: 'user', content: modification.trim() }],
+        },
+        { signal: AbortSignal.timeout(30_000) }
+      )
+      if (!response.content?.length) throw new Error('empty response from AI')
       const raw = response.content[0].text.trim()
       const json = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
       const plan = JSON.parse(json)
@@ -126,6 +130,22 @@ ${SCHEMA}`,
   if (!authRow) return res.status(403).json({ error: 'Account not linked to Telegram' })
 
   const uid = authRow.telegram_user_id
+
+  // Rate limit: minimum 30 seconds between plan generations per user
+  const RL_KEY = '_last_plan_at'
+  const { data: rlRow } = await supabase
+    .from('profile')
+    .select('value')
+    .eq('telegram_user_id', uid)
+    .eq('key', RL_KEY)
+    .maybeSingle()
+  if (rlRow?.value && Date.now() - new Date(rlRow.value).getTime() < 30_000) {
+    return res.status(429).json({ error: 'Please wait before generating a new plan.' })
+  }
+  supabase.from('profile')
+    .upsert({ telegram_user_id: uid, key: RL_KEY, value: new Date().toISOString() }, { onConflict: 'telegram_user_id,key' })
+    .then(({ error }) => { if (error) console.error('[today-plan] rate limit upsert failed:', error.message) })
+
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const today = new Date().toISOString().split('T')[0]
 
@@ -221,13 +241,19 @@ Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
 ${SCHEMA}`
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: 'Generate my plan for today.' }],
-    })
+    const response = await anthropic.messages.create(
+      {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: 'Generate my plan for today.' }],
+      },
+      { signal: AbortSignal.timeout(30_000) }
+    )
 
+    if (!response.content?.length) {
+      throw new Error('empty response from AI')
+    }
     const raw = response.content[0].text.trim()
     // Strip markdown code fences if present
     const json = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()

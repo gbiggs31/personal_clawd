@@ -74,6 +74,11 @@ function formatCycle(cycle) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  if (!process.env.ANTHROPIC_API_KEY || !process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    console.error('[chat] Missing required env vars')
+    return res.status(500).json({ error: 'Service misconfigured' })
+  }
+
   const token = req.headers.authorization?.replace('Bearer ', '')
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
@@ -92,6 +97,18 @@ export default async function handler(req, res) {
     .single()
 
   if (!authRow) return res.status(403).json({ error: 'Account not linked to Telegram' })
+
+  // Rate limit: 30 AI messages per hour per user
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const { count: recentMessages } = await supabase
+    .from('chat_messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('auth_user_id', user.id)
+    .eq('role', 'user')
+    .gte('created_at', oneHourAgo)
+  if ((recentMessages ?? 0) >= 30) {
+    return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' })
+  }
 
   const uid = authRow.telegram_user_id
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -133,7 +150,7 @@ ${historyStr}`
     return res.status(400).json({ error: 'No messages provided' })
   }
 
-  // Log the user's message (fire-and-forget)
+  // Log the user's message (non-blocking)
   const userMessage = messages[messages.length - 1]
   if (userMessage?.role === 'user') {
     supabase.from('chat_messages').insert({
@@ -141,42 +158,60 @@ ${historyStr}`
       auth_user_id: user.id,
       role: 'user',
       message_length: userMessage.content?.length ?? 0,
-    }).then(() => {})
+    }).then(({ error }) => {
+      if (error) console.error('[chat] user message log failed:', error.message)
+    })
   }
 
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders()
-
   let assistantText = ''
+  let streamingStarted = false
 
   try {
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      system,
-      messages: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
-    })
+    const stream = anthropic.messages.stream(
+      {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system,
+        messages: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
+      },
+      { signal: AbortSignal.timeout(45_000) }
+    )
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        if (!streamingStarted) {
+          streamingStarted = true
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+          res.flushHeaders()
+        }
         assistantText += chunk.delta.text
         res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`)
       }
     }
+
+    if (!streamingStarted) {
+      return res.status(500).json({ error: 'No response from AI. Please try again.' })
+    }
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: String(err.message) })}\n\n`)
+    console.error('[chat] stream error:', err.message)
+    if (!streamingStarted) {
+      return res.status(500).json({ error: 'AI service error. Please try again.' })
+    }
+    res.write(`data: ${JSON.stringify({ error: 'AI service error. Please try again.' })}\n\n`)
   }
 
-  // Log the assistant's reply (fire-and-forget)
+  // Log the assistant's reply (non-blocking)
   if (assistantText) {
     supabase.from('chat_messages').insert({
       telegram_user_id: uid,
       auth_user_id: user.id,
       role: 'assistant',
       message_length: assistantText.length,
-    }).then(() => {})
+    }).then(({ error }) => {
+      if (error) console.error('[chat] assistant message log failed:', error.message)
+    })
   }
 
   res.write('data: [DONE]\n\n')

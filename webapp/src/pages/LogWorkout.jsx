@@ -337,8 +337,22 @@ export default function LogWorkout() {
   }
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+    })
   }, [feed])
+
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        requestAnimationFrame(() => {
+          bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
 
   function resizeTextarea() {
     const el = textareaRef.current
@@ -346,6 +360,9 @@ export default function LogWorkout() {
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 140) + 'px'
   }
+
+  // Set correct single-row height on mount (rows={1} can render taller in some browsers)
+  useEffect(() => { resizeTextarea() }, [])
 
   function addFeed(items) {
     setFeed(prev => [...prev, ...(Array.isArray(items) ? items : [items])])
@@ -526,7 +543,7 @@ export default function LogWorkout() {
     if (!trimmed || loading) return
 
     setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    requestAnimationFrame(resizeTextarea)
     setLoading(true)
 
     try {

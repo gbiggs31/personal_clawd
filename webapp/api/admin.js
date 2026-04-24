@@ -11,18 +11,28 @@
  *   POST   /api/admin?action=reset-onboarding  — delete profile (reset onboarding)
  */
 
+import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL
 
 export default async function handler(req, res) {
+  if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    console.error('[admin] Missing required Supabase env vars')
+    return res.status(500).json({ error: 'Service misconfigured' })
+  }
+  if (!ADMIN_EMAIL) {
+    console.error('[admin] ADMIN_EMAIL env var not set — all admin requests will be rejected')
+    return res.status(500).json({ error: 'Admin not configured' })
+  }
+
   const token = req.headers.authorization?.replace('Bearer ', '')
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
   const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-  if (authError || !user || !ADMIN_EMAIL || user.email !== ADMIN_EMAIL) {
+  if (authError || !user || user.email !== ADMIN_EMAIL) {
     return res.status(403).json({ error: 'Forbidden' })
   }
 
@@ -67,15 +77,15 @@ export default async function handler(req, res) {
       if (!email?.trim()) return res.status(400).json({ error: 'Email is required' })
 
       const { data: existing } = await supabase
-        .from('users').select('id').eq('email', email.trim().toLowerCase()).single()
+        .from('users').select('id').eq('email', email.trim().toLowerCase()).maybeSingle()
 
       if (existing) return res.status(409).json({ error: 'A user with this email already exists' })
 
       let telegramUserId
       for (let attempt = 0; attempt < 5; attempt++) {
-        const candidate = Date.now() * 100 + Math.floor(Math.random() * 100)
+        const candidate = Date.now() * 1000 + crypto.randomInt(1000)
         const { data: collision } = await supabase
-          .from('users').select('id').eq('telegram_user_id', candidate).single()
+          .from('users').select('id').eq('telegram_user_id', candidate).maybeSingle()
         if (!collision) { telegramUserId = candidate; break }
       }
 
