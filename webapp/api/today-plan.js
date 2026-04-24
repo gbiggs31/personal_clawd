@@ -169,9 +169,13 @@ ${SCHEMA}`,
 
   const canonicalState = programStateRow?.state_json || {}
 
+  console.log(`[today-plan] uid=${uid} sessions=${sessions?.length ?? 'null'} sets=${sets?.length ?? 'null'} cutoff=${cutoff}`)
+
   const historyStr = formatHistory(sets || [], [...(sessions || [])].reverse(), units)
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
   const profileStr = formatProfile(profile)
+
+  console.log(`[today-plan] historyStr preview: ${historyStr.substring(0, 300).replace(/\n/g, ' | ')}`)
 
   // Strava context — non-blocking, degrades gracefully if unavailable
   let stravaContext = null
