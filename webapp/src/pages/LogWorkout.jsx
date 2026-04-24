@@ -8,6 +8,7 @@ import './LogWorkout.css'
 const SESSION_KEY      = 'avenra-session'
 const PLAN_KEY         = 'avenra-active-plan'
 const FEED_KEY         = 'avenra-feed'
+const DRAFT_KEY        = 'avenra-log-draft'
 const FEED_EXPIRY_MINS = 120
 
 function loadSession() {
@@ -306,7 +307,7 @@ export default function LogWorkout() {
 
   const [feed, setFeed]                    = useState(() => loadPersistedFeed().feed)
   const [chatHistory, setChatHistory]      = useState(() => loadPersistedFeed().chatHistory)
-  const [input, setInput]                  = useState('')
+  const [input, setInput]                  = useState(() => sessionStorage.getItem(DRAFT_KEY) || '')
   const [loading, setLoading]              = useState(false)
   const [mode, setMode]                    = useState(() => location.state?.mode === 'chat' ? 'chat' : 'log')
   const [session, setSession]              = useState(null)
@@ -543,6 +544,7 @@ export default function LogWorkout() {
     if (!trimmed || loading) return
 
     setInput('')
+    sessionStorage.removeItem(DRAFT_KEY)
     requestAnimationFrame(resizeTextarea)
     setLoading(true)
 
@@ -638,7 +640,7 @@ export default function LogWorkout() {
             ref={textareaRef}
             className="log-textarea"
             value={input}
-            onChange={e => { setInput(e.target.value); resizeTextarea() }}
+            onChange={e => { setInput(e.target.value); sessionStorage.setItem(DRAFT_KEY, e.target.value); resizeTextarea() }}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             rows={1}
