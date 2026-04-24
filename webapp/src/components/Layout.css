@@ -147,6 +147,12 @@
     display: none;
   }
 
+  /* Footer is covered by fixed bottom-tabs on mobile and causes z-index
+     overlap with fixed page content (e.g. log input area) — hide it */
+  .layout-footer {
+    display: none;
+  }
+
   .bottom-tabs {
     display: flex;
     position: fixed;
