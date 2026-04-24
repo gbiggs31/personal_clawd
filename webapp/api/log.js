@@ -165,10 +165,14 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Daily logging limit reached. Please try again tomorrow.' })
   }
 
-  // Fetch user's default logging unit preference
+  // Fetch user's unit preferences
+  // log_units controls the default assumption when no unit is given.
+  // If not explicitly set, fall back to inferring from the display units preference
+  // so that setting "Imperial" display units automatically implies lbs logging.
   const { data: profileRows } = await supabase
-    .from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'log_units')
-  const logUnits = profileRows?.[0]?.value || 'kg'
+    .from('profile').select('key,value').eq('telegram_user_id', uid).in('key', ['units', 'log_units'])
+  const profileMap = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
+  const logUnits = profileMap.log_units || (profileMap.units === 'imperial' ? 'lbs' : 'kg')
 
   // Inject the default unit assumption into the extraction prompt
   const unitRule = logUnits === 'lbs'
