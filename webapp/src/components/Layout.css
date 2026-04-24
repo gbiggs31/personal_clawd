@@ -136,6 +136,23 @@
   padding-bottom: 0;
 }
 
+/* ── Log page: locked viewport (keyboard + scroll fix) ──────── */
+
+/* Lock the layout to exact viewport height on the log page.
+   This lets dvh update when the iOS keyboard appears, so the
+   flex children shrink naturally instead of being clipped by fixed
+   positioning. Avoids footer overlap on desktop too. */
+.layout--log {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.layout--log .layout-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ── Bottom tabs (mobile only) ───────────────────────────────── */
 
 .bottom-tabs {

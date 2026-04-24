@@ -59,7 +59,7 @@ export default function Layout({ children }) {
   }
 
   return (
-    <div className="layout">
+    <div className={`layout${isLog ? ' layout--log' : ''}`}>
       <header className="layout-header">
         <div className="layout-logo">Ave<span>nra</span></div>
 
@@ -148,13 +148,15 @@ export default function Layout({ children }) {
         {children}
       </div>
 
-      <footer className="layout-footer">
-        <span className="layout-footer-disclaimer">Not medical advice. Use your judgment.</span>
-        <div className="layout-footer-links">
-          <Link to="/privacy">Privacy</Link>
-          <Link to="/terms">Terms</Link>
-        </div>
-      </footer>
+      {!isLog && (
+        <footer className="layout-footer">
+          <span className="layout-footer-disclaimer">Not medical advice. Use your judgment.</span>
+          <div className="layout-footer-links">
+            <Link to="/privacy">Privacy</Link>
+            <Link to="/terms">Terms</Link>
+          </div>
+        </footer>
+      )}
 
       <nav className="bottom-tabs" aria-label="Mobile navigation">
         <Link to="/today" className={`bottom-tab ${isToday ? 'active' : ''}`}>

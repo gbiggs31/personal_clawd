@@ -1,11 +1,9 @@
 .log-page {
-  position: fixed;
-  top: 56px;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* ── Session card ─────────────────────────────────────────────── */
@@ -586,11 +584,6 @@
 /* ── Mobile ───────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
-  .log-page {
-    top: calc(56px + env(safe-area-inset-top, 0px));
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
-  }
-
   .log-feed {
     padding: 12px;
     gap: 4px;
