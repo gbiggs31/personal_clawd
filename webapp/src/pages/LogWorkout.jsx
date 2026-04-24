@@ -447,9 +447,13 @@ export default function LogWorkout() {
 
     clearSession(); clearActivePlan()
     setSession(null); setActivePlan(null); setPending(null)
+    const today = new Date().toISOString().split('T')[0]
+    const dateLabel = data.sessionDate && data.sessionDate !== today
+      ? ` · ${new Date(data.sessionDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+      : ''
     addFeed({
       type: 'summary',
-      content: `Session closed — ${data.sessionType}${data.durationMins ? ` (${data.durationMins} mins)` : ''}\n\n${data.summary}`,
+      content: `Session closed — ${data.sessionType}${data.durationMins ? ` (${data.durationMins} mins)` : ''}${dateLabel}\n\n${data.summary}`,
     })
   }
 

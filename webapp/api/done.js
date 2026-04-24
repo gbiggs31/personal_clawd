@@ -1,6 +1,70 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 
+const MONTHS = { january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 }
+const MONTH_PAT = '(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
+
+// Extract a past date from free-form note text. Returns YYYY-MM-DD or null.
+function parseDateFromNote(text) {
+  if (!text) return null
+  const t = text.toLowerCase()
+  const today = new Date()
+
+  if (/\byesterday\b/.test(t)) {
+    const d = new Date(today); d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }
+
+  const daysAgo = t.match(/\b(\d+)\s+days?\s+ago\b/)
+  if (daysAgo) {
+    const d = new Date(today); d.setDate(d.getDate() - parseInt(daysAgo[1]))
+    return d.toISOString().split('T')[0]
+  }
+
+  // "April 20" / "April 20th"
+  const m1 = t.match(new RegExp(`\\b${MONTH_PAT}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`))
+  if (m1) {
+    const d = new Date(today.getFullYear(), MONTHS[m1[1]] - 1, parseInt(m1[2]))
+    if (d > today) d.setFullYear(d.getFullYear() - 1)
+    return d.toISOString().split('T')[0]
+  }
+
+  // "20th April" / "20 April"
+  const m2 = t.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH_PAT}\\b`))
+  if (m2) {
+    const d = new Date(today.getFullYear(), MONTHS[m2[2]] - 1, parseInt(m2[1]))
+    if (d > today) d.setFullYear(d.getFullYear() - 1)
+    return d.toISOString().split('T')[0]
+  }
+
+  // "20/04" or "20/4"
+  const m3 = t.match(/\b(\d{1,2})\/(\d{1,2})\b/)
+  if (m3) {
+    const d = new Date(today.getFullYear(), parseInt(m3[2]) - 1, parseInt(m3[1]))
+    if (d > today) d.setFullYear(d.getFullYear() - 1)
+    return d.toISOString().split('T')[0]
+  }
+
+  return null
+}
+
+// Extract a duration in minutes from free-form note text. Returns integer or null.
+function parseDurationFromNote(text) {
+  if (!text) return null
+  const t = text.toLowerCase()
+
+  const hm = t.match(/\b(\d+)\s*h(?:ours?)?\s*(\d+)\s*m(?:in(?:utes?)?)?\b/)
+  if (hm) return parseInt(hm[1]) * 60 + parseInt(hm[2])
+
+  const h = t.match(/\b(\d+)\s*h(?:ours?)\b/)
+  if (h) return parseInt(h[1]) * 60
+
+  const m = t.match(/\b(\d+)\s*m(?:in(?:utes?)?)?\b/)
+  if (m) return parseInt(m[1])
+
+  return null
+}
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const SESSION_CLASSIFY_SYSTEM = `Classify a workout session from its exercise list.
@@ -163,9 +227,18 @@ export default async function handler(req, res) {
   }
 
   const today = new Date().toISOString().split('T')[0]
-  const durationMins = startedAt
-    ? Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)
-    : null
+
+  // Allow backdating: parse date and duration from the note text
+  const dateOverride     = parseDateFromNote(note || '')
+  const durationOverride = parseDurationFromNote(note || '')
+  const sessionDate = dateOverride || today
+  const durationMins = durationOverride
+    ?? (startedAt ? Math.round((Date.now() - new Date(startedAt).getTime()) / 60000) : null)
+
+  // If backdating, update all sets for this session to the correct date
+  if (dateOverride) {
+    await supabase.from('sets').update({ date: dateOverride }).eq('session_id', sessionId).eq('telegram_user_id', uid)
+  }
 
   // Generate summary BEFORE inserting session — so if this fails, session is not committed
   // and the user can retry /done without hitting "session already closed"
@@ -196,7 +269,7 @@ export default async function handler(req, res) {
   const sessionRow = {
     telegram_user_id: uid,
     session_id: sessionId,
-    date: today,
+    date: sessionDate,
     overall_note: note || null,
     duration_mins: durationMins,
     session_type: classification.session_type,
@@ -215,6 +288,7 @@ export default async function handler(req, res) {
     ok: true,
     summary,
     sessionType: classification.session_type,
+    sessionDate,
     durationMins,
     uncertain: classification.uncertain || false,
   })
