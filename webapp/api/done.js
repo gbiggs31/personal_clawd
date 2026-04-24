@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { coachingStyleNote } from '../lib/coaching-style.js'
 
 const MONTHS = { january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 }
 const MONTH_PAT = '(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
@@ -174,8 +175,10 @@ export default async function handler(req, res) {
   if (!sessionId) return res.status(400).json({ error: 'sessionId required' })
 
   const { data: profileRows } = await supabase
-    .from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'units')
-  const units = profileRows?.[0]?.value || 'metric'
+    .from('profile').select('key,value').eq('telegram_user_id', uid).in('key', ['units', 'coaching_style'])
+  const profileMap = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
+  const units = profileMap.units || 'metric'
+  const styleNote = coachingStyleNote(profileMap.coaching_style || 'balanced')
 
   // Check session not already closed
   const { data: existingSession } = await supabase
@@ -251,7 +254,7 @@ export default async function handler(req, res) {
       {
         model: 'claude-sonnet-4-6',
         max_tokens: 512,
-        system: SESSION_SUMMARY_SYSTEM,
+        system: styleNote ? `${SESSION_SUMMARY_SYSTEM}\n\n${styleNote}` : SESSION_SUMMARY_SYSTEM,
         messages: [{ role: 'user', content: summaryContent }],
       },
       { signal: AbortSignal.timeout(30_000) }

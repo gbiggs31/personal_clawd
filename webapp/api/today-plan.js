@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { getStravaContext } from '../lib/strava-context.js'
+import { coachingStyleNote } from '../lib/coaching-style.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -154,11 +155,12 @@ ${SCHEMA}`,
     supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date', { ascending: false }),
     supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
     supabase.from('profile').select('key,value').eq('telegram_user_id', uid)
-      .in('key', ['units', 'training_notes', 'equipment', 'experience_level', 'experience_years', 'chronic_injuries']),
+      .in('key', ['units', 'training_notes', 'equipment', 'experience_level', 'experience_years', 'chronic_injuries', 'coaching_style']),
   ])
 
   const profile = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
   const units = profile.units || 'metric'
+  const styleNote = coachingStyleNote(profile.coaching_style || 'balanced')
 
   // Fetch canonical coaching state assembled by the Python pipeline
   const { data: programStateRow } = await supabase
@@ -220,6 +222,7 @@ ${SCHEMA}`,
     : 'The user prefers metric units. Set weightKg values in kg.'
 
   const systemPrompt = `You are Avenra, an AI strength-training coach. Generate a training plan for today based on the user's recent history.
+${styleNote ? '\n' + styleNote : ''}
 
 ${unitsNote}
 

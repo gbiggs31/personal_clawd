@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { getStravaContext } from '../lib/strava-context.js'
+import { coachingStyleNote } from '../lib/coaching-style.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -117,10 +118,12 @@ export default async function handler(req, res) {
     supabase.from('sets').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
     supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
     supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
-    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).eq('key', 'units'),
+    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).in('key', ['units', 'coaching_style']),
   ])
 
-  const units = profileRows?.[0]?.value || 'metric'
+  const profileMap = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
+  const units = profileMap.units || 'metric'
+  const styleNote = coachingStyleNote(profileMap.coaching_style || 'balanced')
   const unitsNote = units === 'imperial'
     ? 'The user prefers imperial units. Express all weights in lbs and heights in ft/in.'
     : 'The user prefers metric units. Express all weights in kg and heights in cm.'
@@ -141,7 +144,7 @@ export default async function handler(req, res) {
 Answer questions about their training concisely and directly. Reference specific numbers, dates, and exercises from their log. Surface patterns, trends, and anything worth noting. Keep responses focused — the user can ask follow-up questions.
 
 ${unitsNote}
-
+${styleNote ? '\n' + styleNote : ''}
 ${stravaContext ? stravaContext + '\n\n' : ''}${cycleStr ? cycleStr + '\n\n' : ''}=== TRAINING HISTORY (last 90 days) ===
 ${historyStr}`
 

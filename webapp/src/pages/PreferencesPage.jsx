@@ -13,6 +13,12 @@ const LOG_UNIT_OPTIONS = [
   { value: 'lbs', label: 'lbs', hint: 'e.g. bench 225 → 225 lbs' },
 ]
 
+const COACHING_STYLE_OPTIONS = [
+  { value: 'focused',    label: 'Focused',    hint: 'Goal-oriented, direct, holds you accountable' },
+  { value: 'balanced',   label: 'Balanced',   hint: 'Default — clear and even-handed' },
+  { value: 'supportive', label: 'Supportive', hint: 'Warm, empathetic, quick to recognise good work' },
+]
+
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) throw new Error('Not authenticated')
@@ -24,8 +30,8 @@ export default function PreferencesPage() {
   const [loading,        setLoading]        = useState(true)
   const [saving,         setSaving]         = useState(false)
   const [error,          setError]          = useState('')
-  const [prefs,          setPrefs]          = useState({ units: 'metric', log_units: 'kg' })
-  const [draft,          setDraft]          = useState({ units: 'metric', log_units: 'kg' })
+  const [prefs,          setPrefs]          = useState({ units: 'metric', log_units: 'kg', coaching_style: 'balanced' })
+  const [draft,          setDraft]          = useState({ units: 'metric', log_units: 'kg', coaching_style: 'balanced' })
   const [deleteState,    setDeleteState]    = useState('idle') // 'idle' | 'confirm' | 'done' | 'error'
 
   useEffect(() => {
@@ -35,8 +41,9 @@ export default function PreferencesPage() {
         const res = await fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
         const data = await res.json()
         const p = {
-          units:     data.profile?.units     || 'metric',
-          log_units: data.profile?.log_units || 'kg',
+          units:          data.profile?.units          || 'metric',
+          log_units:      data.profile?.log_units      || 'kg',
+          coaching_style: data.profile?.coaching_style || 'balanced',
         }
         setPrefs(p)
         setDraft(p)
@@ -159,6 +166,26 @@ export default function PreferencesPage() {
                   {saving ? 'Saving…' : 'Save'}
                 </button>
               </div>
+            </div>
+
+            <div className="pp-section">
+              <h2 className="pp-section-title">Coaching style</h2>
+              <div className="pp-card">
+                <div className="pp-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+                  {COACHING_STYLE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`pp-option coaching${draft.coaching_style === opt.value ? ' selected' : ''}`}
+                      onClick={() => { setDraft(d => ({ ...d, coaching_style: opt.value })); setSaved(false) }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{opt.label}</span>
+                      <span style={{ marginLeft: 8, opacity: 0.6, fontSize: 12 }}>{opt.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="pp-pref-note">Adjusts the tone of coach responses — not the advice itself.</p>
             </div>
 
             <div className="pp-section">
