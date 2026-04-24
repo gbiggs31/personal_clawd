@@ -323,6 +323,10 @@ export default function LogWorkout() {
   const [session, setSession]              = useState(null)
   const [activePlan, setActivePlan]        = useState(null)
   const [pendingClarification, setPending] = useState(null)
+  const [endingSession, setEndingSession]  = useState(false)
+  const [endNote, setEndNote]              = useState('')
+  const [actionsOpen, setActionsOpen]      = useState(false)
+  const actionsRef                         = useRef(null)
 
   const chatHistoryRef = useRef(null)
   if (chatHistoryRef.current === null) chatHistoryRef.current = loadPersistedFeed().chatHistory
@@ -335,6 +339,19 @@ export default function LogWorkout() {
     const plan = loadActivePlan()
     if (plan) setActivePlan(plan)
   }, [])
+
+  useEffect(() => {
+    if (!actionsOpen) return
+    function handleClick(e) {
+      if (actionsRef.current && !actionsRef.current.contains(e.target)) setActionsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('touchstart', handleClick)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('touchstart', handleClick)
+    }
+  }, [actionsOpen])
 
   useEffect(() => {
     if (feed.length > 0 || chatHistory.length > 0) {
@@ -605,6 +622,20 @@ export default function LogWorkout() {
     addFeed({ type: 'info', content: 'Session discarded.' })
   }
 
+  function startFreshSession() {
+    const id = crypto.randomUUID()
+    const ns = { id, startedAt: new Date().toISOString() }
+    setSession(ns); saveSession(ns)
+    setMode('log')
+    textareaRef.current?.focus()
+  }
+
+  async function confirmEndSession() {
+    await handleDone(endNote.trim() || undefined)
+    setEndingSession(false)
+    setEndNote('')
+  }
+
   const isEmpty = feed.length === 0
 
   const placeholder = mode === 'chat'
@@ -659,6 +690,102 @@ export default function LogWorkout() {
       )}
 
       <div className="log-input-area">
+        {/* Contextual pill CTA */}
+        <div className="log-cta-row">
+          {endingSession ? (
+            <div className="log-end-prompt">
+              <input
+                className="log-end-note"
+                placeholder="Session note (optional)…"
+                value={endNote}
+                onChange={e => setEndNote(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') confirmEndSession() }}
+                autoFocus
+              />
+              <button className="log-cta-pill session" onClick={confirmEndSession} disabled={loading}>
+                {loading ? '…' : 'Confirm'}
+              </button>
+              <button className="log-cta-cancel" onClick={() => { setEndingSession(false); setEndNote('') }}>
+                ✕
+              </button>
+            </div>
+          ) : (
+            <>
+              {session ? (
+                <button className="log-cta-pill session" onClick={() => setEndingSession(true)} disabled={loading}>
+                  End session
+                </button>
+              ) : (
+                <button className="log-cta-pill start" onClick={startFreshSession} disabled={loading}>
+                  Start workout
+                </button>
+              )}
+
+              {/* + actions menu */}
+              <div className="log-actions-wrap" ref={actionsRef}>
+                <button
+                  className={`log-actions-btn${actionsOpen ? ' open' : ''}`}
+                  onClick={() => setActionsOpen(o => !o)}
+                  aria-label="More actions"
+                >
+                  +
+                </button>
+                {actionsOpen && (
+                  <div className="log-actions-menu">
+                    {session && (
+                      <button className="log-action-item" onClick={() => {
+                        setActionsOpen(false)
+                        setEndingSession(true)
+                      }}>
+                        ✓ End session
+                      </button>
+                    )}
+                    {!session && (
+                      <button className="log-action-item" onClick={() => {
+                        setActionsOpen(false)
+                        startFreshSession()
+                      }}>
+                        ▶ Start workout
+                      </button>
+                    )}
+                    <button className="log-action-item" onClick={() => {
+                      setActionsOpen(false)
+                      setMode('log')
+                      setInput('session note: ')
+                      sessionStorage.setItem(DRAFT_KEY, 'session note: ')
+                      setTimeout(resizeTextarea, 0)
+                      textareaRef.current?.focus()
+                    }}>
+                      ✎ Add session note
+                    </button>
+                    <button className="log-action-item" onClick={() => {
+                      setActionsOpen(false)
+                      setMode('chat')
+                      textareaRef.current?.focus()
+                    }}>
+                      ✦ Ask coach
+                    </button>
+                    <button className="log-action-item" onClick={() => {
+                      setActionsOpen(false)
+                      send('/stats')
+                    }}>
+                      ◎ Stats
+                    </button>
+                    {session && (
+                      <button className="log-action-item danger" onClick={() => {
+                        setActionsOpen(false)
+                        discardSession()
+                      }}>
+                        ✕ Discard session
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         <form className="log-form" onSubmit={e => { e.preventDefault(); send(input) }}>
           <ModeToggle mode={mode} onChange={m => { setMode(m); textareaRef.current?.focus() }} />
           <textarea
