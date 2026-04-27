@@ -631,7 +631,13 @@ export default function LogWorkout() {
   }
 
   async function confirmEndSession() {
-    await handleDone(endNote.trim() || undefined)
+    setLoading(true)
+    try {
+      await handleDone(endNote.trim() || undefined)
+    } catch (err) {
+      addFeed({ type: 'error', content: err.message || 'Failed to close session.' })
+    }
+    setLoading(false)
     setEndingSession(false)
     setEndNote('')
   }

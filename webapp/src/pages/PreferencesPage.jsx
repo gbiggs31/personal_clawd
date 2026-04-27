@@ -113,7 +113,18 @@ export default function PreferencesPage() {
                         key={opt.value}
                         type="button"
                         className={`pp-option ${draft.units === opt.value ? 'selected' : ''}`}
-                        onClick={() => { setDraft(d => ({ ...d, units: opt.value })); setSaved(false) }}
+                        onClick={() => {
+                        setDraft(d => ({
+                          ...d,
+                          units: opt.value,
+                          // Keep log_units in sync with display units unless the user has already
+                          // diverged them (i.e. log_units currently matches the old display unit)
+                          log_units: d.log_units === (d.units === 'imperial' ? 'lbs' : 'kg')
+                            ? (opt.value === 'imperial' ? 'lbs' : 'kg')
+                            : d.log_units,
+                        }))
+                        setSaved(false)
+                      }}
                       >
                         {opt.label}
                         <span style={{ marginLeft: 5, opacity: 0.6, fontSize: 11 }}>
