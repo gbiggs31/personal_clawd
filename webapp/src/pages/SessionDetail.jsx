@@ -588,7 +588,7 @@ export default function SessionDetail() {
     const token = await getToken()
     if (!token) throw new Error('Not authenticated')
 
-    const res = await fetch('/api/session', {
+    const res = await fetch('/api/user-actions?action=update-session', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ sessionId, fields }),

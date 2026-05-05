@@ -88,3 +88,14 @@ pip install -r requirements.txt
 ## Keeping it running
 
 To run 24/7, deploy to a cheap VPS (Hetzner, DigitalOcean) or a free tier on Railway/Render.
+
+## Analytics setup
+
+PostHog is split across the two runtimes in this repo:
+
+- `webapp/` frontend on Vercel:
+  set `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in Vercel project environment variables.
+- Python bot / coaching worker on your VM:
+  set `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` in the VM's `.env` or process environment.
+
+The frontend token is expected to be browser-visible. The bot variables stay on the server.

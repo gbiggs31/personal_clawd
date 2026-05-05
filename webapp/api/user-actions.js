@@ -1,5 +1,5 @@
 /**
- * /api/user-actions?action=<consent|request-deletion>
+ * /api/user-actions?action=<consent|request-deletion|update-session>
  *
  * Consolidated handler for user compliance actions.
  */
@@ -40,6 +40,37 @@ export default async function handler(req, res) {
       status:       'pending',
     })
     if (insertError) return res.status(500).json({ error: insertError.message })
+    return res.json({ ok: true })
+  }
+
+  if (action === 'update-session') {
+    const { data: authRow } = await supabase
+      .from('user_auth')
+      .select('telegram_user_id')
+      .eq('auth_user_id', user.id)
+      .single()
+    if (!authRow) return res.status(403).json({ error: 'Not linked' })
+
+    const { sessionId, fields } = req.body || {}
+    if (!sessionId || !fields || typeof fields !== 'object') {
+      return res.status(400).json({ error: 'sessionId and fields required' })
+    }
+
+    const allowed = ['session_type', 'overall_note', 'duration_mins', 'coaching_note']
+    const safe = Object.fromEntries(
+      Object.entries(fields).filter(([k]) => allowed.includes(k))
+    )
+    if (!Object.keys(safe).length) {
+      return res.status(400).json({ error: 'No valid fields to update' })
+    }
+
+    const { error: updateError } = await supabase
+      .from('sessions')
+      .update(safe)
+      .eq('session_id', sessionId)
+      .eq('telegram_user_id', authRow.telegram_user_id)
+
+    if (updateError) return res.status(500).json({ error: updateError.message })
     return res.json({ ok: true })
   }
 

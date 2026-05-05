@@ -1,13 +1,11 @@
 import { useEffect } from 'react'
+import { trackPostHog } from '../utils/posthog.js'
 import './SupportCTA.css'
 
 const BMAC_URL = import.meta.env.VITE_BUYMEACOFFEE_URL
 
-// Safe analytics wrapper — no-ops if PostHog (or any window.posthog) isn't loaded.
 function track(event, placement) {
-  try {
-    window.posthog?.capture(event, { placement })
-  } catch {}
+  trackPostHog(event, { placement })
 }
 
 /**

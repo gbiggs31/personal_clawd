@@ -19,6 +19,7 @@ import TermsPage from './pages/TermsPage.jsx'
 import SupportPage from './pages/SupportPage.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import BugReportButton from './components/BugReportButton.jsx'
+import { hasPostHogConfig, identifyPostHog, initPostHog, resetPostHog } from './utils/posthog.js'
 
 // Requires a valid session, then checks if onboarding is complete.
 // Caches the result in sessionStorage so the profile check only happens once per session.
@@ -114,12 +115,18 @@ function RootRoute() {
 
 export default function App() {
   useEffect(() => {
+    if (hasPostHogConfig()) {
+      initPostHog().catch(() => {})
+    }
+  }, [])
+
+  useEffect(() => {
     // Identify logged-in users in PostHog; reset on sign-out
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       if (session?.user) {
-        window.posthog?.identify(session.user.id, { email: session.user.email })
+        identifyPostHog(session.user.id, { email: session.user.email })
       } else {
-        window.posthog?.reset()
+        resetPostHog()
       }
     })
     return () => subscription.unsubscribe()
