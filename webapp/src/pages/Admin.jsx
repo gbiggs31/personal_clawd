@@ -11,12 +11,26 @@ function StatusBadge({ status }) {
   )
 }
 
+function safeErrorMessage(err, fallback) {
+  return err instanceof Error ? err.message : fallback
+}
+
+function getReportPath(pageUrl) {
+  if (!pageUrl) return '-'
+
+  try {
+    return new URL(pageUrl).pathname || '/'
+  } catch {
+    return pageUrl
+  }
+}
+
 function AddUserForm({ onAdd }) {
   const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName]   = useState('')
-  const [email, setEmail]         = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -25,9 +39,11 @@ function AddUserForm({ onAdd }) {
     setError('')
     try {
       await onAdd({ firstName, lastName, email })
-      setFirstName(''); setLastName(''); setEmail('')
+      setFirstName('')
+      setLastName('')
+      setEmail('')
     } catch (err) {
-      setError(err.message)
+      setError(safeErrorMessage(err, 'Failed to add user'))
     }
     setLoading(false)
   }
@@ -64,7 +80,7 @@ function AddUserForm({ onAdd }) {
           className="admin-btn primary"
           disabled={loading || !email.trim()}
         >
-          {loading ? 'Adding…' : 'Add user'}
+          {loading ? 'Adding...' : 'Add user'}
         </button>
       </div>
       {error && <p className="admin-form-error">{error}</p>}
@@ -73,33 +89,39 @@ function AddUserForm({ onAdd }) {
 }
 
 function UserRow({ user, onToggleStatus, onResetOnboarding }) {
-  const [loading, setLoading]           = useState(false)
+  const [loading, setLoading] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
-  const [resetDone, setResetDone]       = useState(false)
+  const [resetDone, setResetDone] = useState(false)
 
   async function toggle() {
     setLoading(true)
-    await onToggleStatus(user.telegram_user_id, user.status === 'active' ? 'pending' : 'active')
-    setLoading(false)
+    try {
+      await onToggleStatus(user.telegram_user_id, user.status === 'active' ? 'pending' : 'active')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function resetOnboarding() {
     setResetLoading(true)
-    await onResetOnboarding(user.telegram_user_id)
-    setResetDone(true)
-    setResetLoading(false)
+    try {
+      await onResetOnboarding(user.telegram_user_id)
+      setResetDone(true)
+    } finally {
+      setResetLoading(false)
+    }
   }
 
   const joined = user.created_at
     ? new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-    : '—'
+    : '-'
 
-  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || '—'
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || '-'
 
   return (
     <tr className="user-row">
       <td className="user-name">{displayName}</td>
-      <td className="user-email">{user.email || '—'}</td>
+      <td className="user-email">{user.email || '-'}</td>
       <td><StatusBadge status={user.status} /></td>
       <td className="user-linked">
         {user.web_linked
@@ -115,7 +137,7 @@ function UserRow({ user, onToggleStatus, onResetOnboarding }) {
           disabled={resetLoading || resetDone}
           title="Clears profile data so they see onboarding on next login"
         >
-          {resetDone ? 'Done ✓' : resetLoading ? '…' : 'Re-onboard'}
+          {resetDone ? 'Done' : resetLoading ? '...' : 'Re-onboard'}
         </button>
         <button
           className={`admin-btn small ${user.status === 'active' ? 'danger' : 'secondary'}`}
@@ -129,11 +151,67 @@ function UserRow({ user, onToggleStatus, onResetOnboarding }) {
   )
 }
 
+function CategoryBadge({ category }) {
+  const colours = { bug: 'danger', suggestion: 'accent', other: 'muted' }
+  const colour = colours[category] || 'muted'
+  return <span className={`report-category-badge ${colour}`}>{category}</span>
+}
+
+function BugReportRow({ report, onResolve }) {
+  const [resolving, setResolving] = useState(false)
+  const date = new Date(report.created_at).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  })
+
+  async function resolve() {
+    setResolving(true)
+    try {
+      await onResolve(report.id)
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  return (
+    <tr className="user-row">
+      <td className="report-date">{date}</td>
+      <td><CategoryBadge category={report.category} /></td>
+      <td className="report-desc">{report.description}</td>
+      <td className="report-url">
+        {report.page_url
+          ? <span title={report.page_url}>{getReportPath(report.page_url)}</span>
+          : '-'}
+      </td>
+      <td>
+        <span className={`status-badge ${report.status === 'resolved' ? 'active' : 'pending'}`}>
+          <span className="status-dot" />
+          {report.status}
+        </span>
+      </td>
+      <td className="user-actions">
+        {report.status === 'open' && (
+          <button
+            className="admin-btn small secondary"
+            onClick={resolve}
+            disabled={resolving}
+          >
+            {resolving ? '...' : 'Resolve'}
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+}
+
 export default function Admin() {
-  const [users, setUsers]       = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState('')
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [forbidden, setForbidden] = useState(false)
+
+  const [reports, setReports] = useState([])
+  const [reportsLoading, setReportsLoading] = useState(true)
+  const [showAllReports, setShowAllReports] = useState(false)
 
   async function getToken() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -149,17 +227,56 @@ export default function Admin() {
       const res = await fetch('/api/admin?resource=users', {
         headers: { Authorization: `Bearer ${token}` },
       })
-      if (res.status === 403) { setForbidden(true); return }
+      if (res.status === 403) {
+        setForbidden(true)
+        return
+      }
       if (!res.ok) throw new Error((await res.json()).error || 'Failed to load users')
       const data = await res.json()
       setUsers(data.users || [])
     } catch (err) {
-      setError(err.message)
+      setError(safeErrorMessage(err, 'Failed to load users'))
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  async function fetchReports() {
+    setReportsLoading(true)
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/bug-reports', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setReports(data.reports || [])
+      }
+    } finally {
+      setReportsLoading(false)
+    }
+  }
+
+  async function resolveReport(id) {
+    const token = await getToken()
+    const res = await fetch('/api/bug-reports', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, status: 'resolved' }),
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Failed to update report')
+    }
+
+    setReports(prev => prev.map(r => (r.id === id ? { ...r, status: 'resolved' } : r)))
+  }
+
+  useEffect(() => {
+    fetchUsers()
+    fetchReports()
+  }, [])
 
   async function addUser({ firstName, lastName, email }) {
     const token = await getToken()
@@ -202,14 +319,14 @@ export default function Admin() {
     return (
       <div className="admin-page">
         <div className="admin-forbidden">
-          <p>You don't have access to this page.</p>
+          <p>You do not have access to this page.</p>
         </div>
       </div>
     )
   }
 
-  const activeCount  = users.filter(u => u.status === 'active').length
-  const linkedCount  = users.filter(u => u.web_linked).length
+  const activeCount = users.filter(u => u.status === 'active').length
+  const linkedCount = users.filter(u => u.web_linked).length
 
   return (
     <div className="admin-page">
@@ -219,7 +336,7 @@ export default function Admin() {
             <h1 className="admin-title">Users</h1>
             {!loading && (
               <p className="admin-sub">
-                {activeCount} active · {linkedCount} web linked · {users.length} total
+                {activeCount} active | {linkedCount} web linked | {users.length} total
               </p>
             )}
           </div>
@@ -230,7 +347,7 @@ export default function Admin() {
         {error && <p className="admin-error">{error}</p>}
 
         {loading ? (
-          <div className="admin-loading">Loading…</div>
+          <div className="admin-loading">Loading...</div>
         ) : users.length === 0 ? (
           <div className="admin-empty">No users yet.</div>
         ) : (
@@ -259,6 +376,53 @@ export default function Admin() {
             </table>
           </div>
         )}
+
+        <div className="admin-section">
+          <div className="admin-header" style={{ marginTop: 32 }}>
+            <div>
+              <h1 className="admin-title">Bug Reports</h1>
+              {!reportsLoading && (
+                <p className="admin-sub">
+                  {reports.filter(r => r.status === 'open').length} open | {reports.length} total
+                </p>
+              )}
+            </div>
+            <button
+              className="admin-btn small secondary"
+              onClick={() => setShowAllReports(v => !v)}
+            >
+              {showAllReports ? 'Open only' : 'Show all'}
+            </button>
+          </div>
+
+          {reportsLoading ? (
+            <div className="admin-loading">Loading...</div>
+          ) : reports.length === 0 ? (
+            <div className="admin-empty">No reports yet.</div>
+          ) : (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Page</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports
+                    .filter(r => showAllReports || r.status === 'open')
+                    .map(r => (
+                      <BugReportRow key={r.id} report={r} onResolve={resolveReport} />
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

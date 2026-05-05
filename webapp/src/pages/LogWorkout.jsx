@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { supabase } from '../utils/supabase.js'
+import SupportCTA from '../components/SupportCTA.jsx'
 import './LogWorkout.css'
 
 const SESSION_KEY      = 'avenra-session'
@@ -111,6 +112,7 @@ function ResponseItem({ msg, isStreaming }) {
         <div className="feed-markdown">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
         </div>
+        {msg.type === 'summary' && <SupportCTA placement="post_workout" />}
       </div>
     )
   }
@@ -204,7 +206,17 @@ function SessionCard({ session, activePlan, onDiscard }) {
                 <span className="session-ex-icon">
                   {status === 'complete' ? '✓' : '◑'}
                 </span>
-                <span className="session-ex-name">{ex.name}</span>
+                <div className="session-ex-body">
+                  <span className="session-ex-name">{ex.name}</span>
+                  {hasPlan && (ex.weightKg != null || ex.repTargets?.length) && (
+                    <span className="session-ex-prescription">
+                      {ex.weightKg != null
+                        ? `${ex.weightKg}${activePlan.units === 'imperial' ? 'lbs' : 'kg'}`
+                        : 'BW'}
+                      {ex.repTargets?.length ? ` · ${ex.repTargets.join(' / ')}` : ''}
+                    </span>
+                  )}
+                </div>
                 <span className="session-ex-meta">
                   {hasPlan && ex.sets ? `${logged}/${ex.sets} sets` : `${logged} set${logged !== 1 ? 's' : ''}`}
                 </span>
@@ -700,12 +712,17 @@ export default function LogWorkout() {
         <div className="log-cta-row">
           {endingSession ? (
             <div className="log-end-prompt">
-              <input
+              <textarea
                 className="log-end-note"
                 placeholder="Session note (optional)…"
                 value={endNote}
-                onChange={e => setEndNote(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmEndSession() }}
+                onChange={e => {
+                  setEndNote(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = e.target.scrollHeight + 'px'
+                }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmEndSession() } }}
+                rows={1}
                 autoFocus
               />
               <button className="log-cta-pill session" onClick={confirmEndSession} disabled={loading}>

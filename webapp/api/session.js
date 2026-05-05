@@ -26,7 +26,7 @@ export default async function handler(req, res) {
   }
 
   // Whitelist updatable fields to prevent arbitrary writes
-  const ALLOWED = ['session_type', 'overall_note', 'duration_mins']
+  const ALLOWED = ['session_type', 'overall_note', 'duration_mins', 'coaching_note']
   const safe = Object.fromEntries(
     Object.entries(fields).filter(([k]) => ALLOWED.includes(k))
   )

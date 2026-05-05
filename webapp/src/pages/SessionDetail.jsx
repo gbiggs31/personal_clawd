@@ -5,7 +5,7 @@ import './SessionDetail.css'
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
-  const d = new Date(dateStr + 'T00:00:00')
+  const d = new Date(`${dateStr}T00:00:00`)
   return d.toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
@@ -41,11 +41,27 @@ function compareSet(current, previous) {
 
 function formatWeightRep(set) {
   const weight = set?.weight_kg != null ? `${set.weight_kg}kg` : 'BW'
-  const reps = set?.reps != null ? `× ${set.reps}` : ''
+  const reps = set?.reps != null ? `x ${set.reps}` : ''
   return `${weight} ${reps}`.trim()
 }
 
-function SetRow({ set, previousSet, onUpdate, onDelete }) {
+function EditIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+      <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+      <path d="M2 3.5h10M5 3.5V2.5h4v1M5.5 6v5M8.5 6v5M3 3.5l.7 8h6.6l.7-8" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -78,16 +94,22 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
     setSaving(true)
     const updates = {
       weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
-      reps:      form.reps      !== '' ? parseInt(form.reps)        : null,
-      rpe:       form.rpe       !== '' ? parseFloat(form.rpe)       : null,
-      rir:       form.rir       !== '' ? parseInt(form.rir)         : null,
-      note:      form.note || null,
+      reps: form.reps !== '' ? parseInt(form.reps, 10) : null,
+      rpe: form.rpe !== '' ? parseFloat(form.rpe) : null,
+      rir: form.rir !== '' ? parseInt(form.rir, 10) : null,
+      note: form.note || null,
       injury_flag: form.injury_flag,
       injury_body_part: form.injury_flag ? (form.injury_body_part || null) : null,
     }
-    await onUpdate(set.id, updates)
-    setSaving(false)
-    setEditing(false)
+
+    try {
+      const ok = await onUpdate(set.id, updates)
+      if (ok) setEditing(false)
+    } catch (err) {
+      onError(err)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete() {
@@ -95,7 +117,13 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
       setConfirmDelete(true)
       return
     }
-    await onDelete(set.id)
+
+    try {
+      const ok = await onDelete(set.id)
+      if (ok) setEditing(false)
+    } catch (err) {
+      onError(err)
+    }
   }
 
   const rpe = set.rpe != null ? `RPE ${set.rpe}` : null
@@ -115,15 +143,15 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
           </label>
           <label className="edit-field">
             <span>Reps</span>
-            <input type="number" step="1" value={form.reps} onChange={field('reps')} placeholder="—" />
+            <input type="number" step="1" value={form.reps} onChange={field('reps')} placeholder="-" />
           </label>
           <label className="edit-field">
             <span>RPE</span>
-            <input type="number" step="0.5" min="0" max="10" value={form.rpe} onChange={field('rpe')} placeholder="—" />
+            <input type="number" step="0.5" min="0" max="10" value={form.rpe} onChange={field('rpe')} placeholder="-" />
           </label>
           <label className="edit-field">
             <span>RIR</span>
-            <input type="number" step="1" min="0" value={form.rir} onChange={field('rir')} placeholder="—" />
+            <input type="number" step="1" min="0" value={form.rir} onChange={field('rir')} placeholder="-" />
           </label>
         </div>
 
@@ -151,7 +179,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
           <div className="edit-actions-right">
             <button className="edit-btn-cancel" onClick={cancel}>Cancel</button>
             <button className="edit-btn-save" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
@@ -170,16 +198,14 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
         <div className="set-card-right">
           {delta && (
             <span className={`delta-badge ${delta.direction}`}>
-              {delta.direction === 'up' && '↑ '}
-              {delta.direction === 'down' && '↓ '}
+              {delta.direction === 'up' && 'Up '}
+              {delta.direction === 'down' && 'Down '}
               {delta.direction === 'flat' && '= '}
               {delta.text}
             </span>
           )}
           <button className="set-edit-btn" onClick={startEdit} aria-label="Edit set">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-            </svg>
+            <EditIcon />
           </button>
         </div>
       </div>
@@ -189,7 +215,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
         {rir && <span className="meta-badge">{rir}</span>}
         {injury && (
           <span className="meta-badge injury-badge">
-            ⚠ {set.injury_body_part || 'injury'}
+            ! {set.injury_body_part || 'injury'}
           </span>
         )}
       </div>
@@ -199,16 +225,209 @@ function SetRow({ set, previousSet, onUpdate, onDelete }) {
   )
 }
 
-function ExerciseBlock({ exercise, sets, previousSets, onUpdate, onDelete }) {
+function AddSetForm({ onSave, onCancel, onError }) {
+  const [form, setForm] = useState({ weight_kg: '', reps: '', note: '' })
+  const [saving, setSaving] = useState(false)
+
+  function field(key) {
+    return e => setForm(f => ({ ...f, [key]: e.target.value }))
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await onSave({
+        weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
+        reps: form.reps !== '' ? parseInt(form.reps, 10) : null,
+        note: form.note || null,
+      })
+    } catch (err) {
+      onError(err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="add-set-form">
+      <div className="add-set-label">New set</div>
+      <div className="edit-grid">
+        <label className="edit-field">
+          <span>Weight (kg)</span>
+          <input type="number" step="0.5" value={form.weight_kg} onChange={field('weight_kg')} placeholder="BW" autoFocus />
+        </label>
+        <label className="edit-field">
+          <span>Reps</span>
+          <input type="number" step="1" value={form.reps} onChange={field('reps')} placeholder="-" />
+        </label>
+      </div>
+      <label className="edit-field edit-field-full">
+        <span>Note</span>
+        <input type="text" value={form.note} onChange={field('note')} placeholder="Optional" />
+      </label>
+      <div className="edit-actions">
+        <div />
+        <div className="edit-actions-right">
+          <button className="edit-btn-cancel" onClick={onCancel}>Cancel</button>
+          <button className="edit-btn-save" onClick={save} disabled={saving}>
+            {saving ? 'Saving...' : 'Add set'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AddExerciseForm({ onSave, onCancel, onError }) {
+  const [form, setForm] = useState({ exercise: '', weight_kg: '', reps: '' })
+  const [saving, setSaving] = useState(false)
+
+  function field(key) {
+    return e => setForm(f => ({ ...f, [key]: e.target.value }))
+  }
+
+  async function save() {
+    if (!form.exercise.trim()) return
+    setSaving(true)
+    try {
+      await onSave(form.exercise.trim(), {
+        weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
+        reps: form.reps !== '' ? parseInt(form.reps, 10) : null,
+      })
+    } catch (err) {
+      onError(err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="add-exercise-form">
+      <div className="add-set-label">New exercise</div>
+      <label className="edit-field edit-field-full" style={{ marginBottom: 10 }}>
+        <span>Exercise name</span>
+        <input type="text" value={form.exercise} onChange={field('exercise')} placeholder="e.g. Bench Press" autoFocus />
+      </label>
+      <div className="edit-grid">
+        <label className="edit-field">
+          <span>Weight (kg)</span>
+          <input type="number" step="0.5" value={form.weight_kg} onChange={field('weight_kg')} placeholder="BW" />
+        </label>
+        <label className="edit-field">
+          <span>Reps</span>
+          <input type="number" step="1" value={form.reps} onChange={field('reps')} placeholder="-" />
+        </label>
+      </div>
+      <div className="edit-actions">
+        <div />
+        <div className="edit-actions-right">
+          <button className="edit-btn-cancel" onClick={onCancel}>Cancel</button>
+          <button className="edit-btn-save" onClick={save} disabled={saving || !form.exercise.trim()}>
+            {saving ? 'Saving...' : 'Add exercise'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ExerciseBlock({
+  exercise,
+  sets,
+  previousSets,
+  onUpdate,
+  onDelete,
+  onRename,
+  onDeleteExercise,
+  onAddSet,
+  onError,
+}) {
+  const [editingName, setEditingName] = useState(false)
+  const [nameForm, setNameForm] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState(false)
+  const [showAddSet, setShowAddSet] = useState(false)
+
   const topSet = getTopSet(sets)
   const prevTop = getTopSet(previousSets)
   const topDelta = compareSet(topSet, prevTop)
 
+  function startRename() {
+    setNameForm(exercise)
+    setEditingName(true)
+    setConfirmDeleteEx(false)
+  }
+
+  async function saveRename() {
+    const trimmed = nameForm.trim()
+    if (!trimmed || trimmed === exercise) {
+      setEditingName(false)
+      return
+    }
+
+    setSavingName(true)
+    try {
+      const ok = await onRename(exercise, trimmed)
+      if (ok) setEditingName(false)
+    } catch (err) {
+      onError(err)
+    } finally {
+      setSavingName(false)
+    }
+  }
+
+  async function handleDeleteExercise() {
+    if (!confirmDeleteEx) {
+      setConfirmDeleteEx(true)
+      return
+    }
+
+    try {
+      const ok = await onDeleteExercise(exercise)
+      if (ok) setConfirmDeleteEx(false)
+    } catch (err) {
+      onError(err)
+    }
+  }
+
+  async function handleAddSet(fields) {
+    try {
+      const ok = await onAddSet(exercise, fields)
+      if (ok) setShowAddSet(false)
+    } catch (err) {
+      onError(err)
+    }
+  }
+
   return (
     <section className="exercise-block">
       <div className="exercise-header">
-        <div>
-          <h3 className="exercise-name">{exercise}</h3>
+        <div className="exercise-header-left">
+          {editingName ? (
+            <div className="exercise-rename-row">
+              <input
+                className="exercise-rename-input"
+                value={nameForm}
+                onChange={e => setNameForm(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') saveRename()
+                  if (e.key === 'Escape') setEditingName(false)
+                }}
+                autoFocus
+              />
+              <button className="edit-btn-cancel" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setEditingName(false)}>Cancel</button>
+              <button className="edit-btn-save" style={{ fontSize: 12, padding: '4px 10px' }} onClick={saveRename} disabled={savingName}>
+                {savingName ? '...' : 'Save'}
+              </button>
+            </div>
+          ) : (
+            <div className="exercise-name-row">
+              <h3 className="exercise-name">{exercise}</h3>
+              <button className="ex-icon-btn" onClick={startRename} title="Rename exercise">
+                <EditIcon />
+              </button>
+            </div>
+          )}
           {prevTop ? (
             <p className="exercise-prev-line">Last time: {formatWeightRep(prevTop)}</p>
           ) : (
@@ -216,14 +435,23 @@ function ExerciseBlock({ exercise, sets, previousSets, onUpdate, onDelete }) {
           )}
         </div>
 
-        {topDelta && (
-          <span className={`delta-badge ${topDelta.direction}`}>
-            {topDelta.direction === 'up' && '↑ '}
-            {topDelta.direction === 'down' && '↓ '}
-            {topDelta.direction === 'flat' && '= '}
-            {topDelta.text}
-          </span>
-        )}
+        <div className="exercise-header-right">
+          {topDelta && (
+            <span className={`delta-badge ${topDelta.direction}`}>
+              {topDelta.direction === 'up' && 'Up '}
+              {topDelta.direction === 'down' && 'Down '}
+              {topDelta.direction === 'flat' && '= '}
+              {topDelta.text}
+            </span>
+          )}
+          <button
+            className={`ex-icon-btn ex-delete-btn${confirmDeleteEx ? ' confirming' : ''}`}
+            onClick={handleDeleteExercise}
+            title={confirmDeleteEx ? 'Click again to confirm deletion' : 'Delete exercise'}
+          >
+            {confirmDeleteEx ? 'Delete?' : <TrashIcon />}
+          </button>
+        </div>
       </div>
 
       <div className="sets-list">
@@ -234,9 +462,18 @@ function ExerciseBlock({ exercise, sets, previousSets, onUpdate, onDelete }) {
             previousSet={previousSets?.[index]}
             onUpdate={onUpdate}
             onDelete={onDelete}
+            onError={onError}
           />
         ))}
       </div>
+
+      {showAddSet ? (
+        <AddSetForm onSave={handleAddSet} onCancel={() => setShowAddSet(false)} onError={onError} />
+      ) : (
+        <button className="add-set-btn" onClick={() => { setShowAddSet(true); setConfirmDeleteEx(false) }}>
+          + Add set
+        </button>
+      )}
     </section>
   )
 }
@@ -250,24 +487,42 @@ export default function SessionDetail() {
   const [previousSessionSets, setPreviousSessionSets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [actionError, setActionError] = useState('')
+
   const [editingType, setEditingType] = useState(false)
+  const [editingNote, setEditingNote] = useState(false)
+  const [noteForm, setNoteForm] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+  const [editingDuration, setEditingDuration] = useState(false)
+  const [durationForm, setDurationForm] = useState('')
+  const [savingDuration, setSavingDuration] = useState(false)
+  const [editingCoachNote, setEditingCoachNote] = useState(false)
+  const [coachNoteForm, setCoachNoteForm] = useState('')
+  const [savingCoachNote, setSavingCoachNote] = useState(false)
+  const [showAddExercise, setShowAddExercise] = useState(false)
 
   const SESSION_TYPES = ['push', 'pull', 'legs', 'upper', 'full_body', 'cardio', 'other']
 
-  async function handleUpdateSessionType(newType) {
-    const { data: { session: authSession } } = await supabase.auth.getSession()
-    const token = authSession?.access_token
-    if (!token) return
+  function clearActionError() {
+    setActionError('')
+  }
 
-    const res = await fetch('/api/session', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ sessionId, fields: { session_type: newType } }),
-    })
-    if (res.ok) {
-      setSession(prev => ({ ...prev, session_type: newType }))
+  function handleActionError(err) {
+    setActionError(err instanceof Error ? err.message : 'Something went wrong.')
+  }
+
+  async function getToken() {
+    const { data: { session: authSession } } = await supabase.auth.getSession()
+    return authSession?.access_token || null
+  }
+
+  async function readApiError(res, fallback) {
+    try {
+      const data = await res.json()
+      return data.error || fallback
+    } catch {
+      return fallback
     }
-    setEditingType(false)
   }
 
   useEffect(() => {
@@ -328,40 +583,218 @@ export default function SessionDetail() {
     load()
   }, [sessionId])
 
-  async function getToken() {
-    const { data: { session: s } } = await supabase.auth.getSession()
-    return s?.access_token || null
+  async function patchSession(fields) {
+    clearActionError()
+    const token = await getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    const res = await fetch('/api/session', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sessionId, fields }),
+    })
+
+    if (!res.ok) {
+      throw new Error(await readApiError(res, 'Failed to update session'))
+    }
+
+    return true
+  }
+
+  async function handleUpdateSessionType(newType) {
+    try {
+      if (await patchSession({ session_type: newType })) {
+        setSession(prev => ({ ...prev, session_type: newType }))
+      }
+    } catch (err) {
+      handleActionError(err)
+    } finally {
+      setEditingType(false)
+    }
+  }
+
+  function startEditNote() {
+    clearActionError()
+    setNoteForm(session.overall_note || '')
+    setEditingNote(true)
+  }
+
+  async function saveNote() {
+    setSavingNote(true)
+    try {
+      if (await patchSession({ overall_note: noteForm.trim() || null })) {
+        setSession(prev => ({ ...prev, overall_note: noteForm.trim() || null }))
+        setEditingNote(false)
+      }
+    } catch (err) {
+      handleActionError(err)
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  function startEditCoachNote() {
+    clearActionError()
+    setCoachNoteForm(session.coaching_note || '')
+    setEditingCoachNote(true)
+  }
+
+  async function saveCoachNote() {
+    setSavingCoachNote(true)
+    try {
+      if (await patchSession({ coaching_note: coachNoteForm.trim() || null })) {
+        setSession(prev => ({ ...prev, coaching_note: coachNoteForm.trim() || null }))
+        setEditingCoachNote(false)
+      }
+    } catch (err) {
+      handleActionError(err)
+    } finally {
+      setSavingCoachNote(false)
+    }
+  }
+
+  function startEditDuration() {
+    clearActionError()
+    setDurationForm(session.duration_mins ?? '')
+    setEditingDuration(true)
+  }
+
+  async function saveDuration() {
+    const val = durationForm !== '' ? parseInt(durationForm, 10) : null
+    setSavingDuration(true)
+    try {
+      if (await patchSession({ duration_mins: val })) {
+        setSession(prev => ({ ...prev, duration_mins: val }))
+        setEditingDuration(false)
+      }
+    } catch (err) {
+      handleActionError(err)
+    } finally {
+      setSavingDuration(false)
+    }
   }
 
   async function handleUpdateSet(setId, fields) {
+    clearActionError()
     const token = await getToken()
-    if (!token) return
+    if (!token) throw new Error('Not authenticated')
+
     const res = await fetch('/api/sets', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ setId, fields }),
     })
-    if (res.ok) {
-      setSets(prev => prev.map(s => s.id === setId ? { ...s, ...fields } : s))
+
+    if (!res.ok) {
+      throw new Error(await readApiError(res, 'Failed to update set'))
     }
+
+    setSets(prev => prev.map(s => (s.id === setId ? { ...s, ...fields } : s)))
+    return true
   }
 
   async function handleDeleteSet(setId) {
+    clearActionError()
     const token = await getToken()
-    if (!token) return
+    if (!token) throw new Error('Not authenticated')
+
     const res = await fetch('/api/sets', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ setId }),
     })
-    if (res.ok) {
-      setSets(prev => prev.filter(s => s.id !== setId))
+
+    if (!res.ok) {
+      throw new Error(await readApiError(res, 'Failed to delete set'))
     }
+
+    setSets(prev => prev.filter(s => s.id !== setId))
+    return true
+  }
+
+  async function handleRenameExercise(oldName, newName) {
+    clearActionError()
+    const token = await getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    const setsToRename = sets.filter(s => (s.exercise || '').trim() === oldName)
+    const responses = await Promise.all(setsToRename.map(s =>
+      fetch('/api/sets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ setId: s.id, fields: { exercise: newName } }),
+      })
+    ))
+
+    const failed = responses.find(res => !res.ok)
+    if (failed) {
+      throw new Error(await readApiError(failed, 'Failed to rename exercise'))
+    }
+
+    setSets(prev => prev.map(s =>
+      ((s.exercise || '').trim() === oldName ? { ...s, exercise: newName } : s)
+    ))
+    return true
+  }
+
+  async function handleDeleteExercise(exerciseName) {
+    clearActionError()
+    const token = await getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    const setsToDelete = sets.filter(s => (s.exercise || '').trim() === exerciseName)
+    const responses = await Promise.all(setsToDelete.map(s =>
+      fetch('/api/sets', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ setId: s.id }),
+      })
+    ))
+
+    const failed = responses.find(res => !res.ok)
+    if (failed) {
+      throw new Error(await readApiError(failed, 'Failed to delete exercise'))
+    }
+
+    setSets(prev => prev.filter(s => (s.exercise || '').trim() !== exerciseName))
+    return true
+  }
+
+  async function handleAddSet(exerciseName, fields) {
+    clearActionError()
+    const token = await getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    const exerciseSets = sets.filter(s => (s.exercise || '').trim() === exerciseName)
+    const nextSetNum = exerciseSets.length > 0
+      ? Math.max(...exerciseSets.map(s => s.set_num)) + 1
+      : 1
+
+    const res = await fetch('/api/sets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sessionId, exercise: exerciseName, setNum: nextSetNum, ...fields }),
+    })
+
+    if (!res.ok) {
+      throw new Error(await readApiError(res, 'Failed to add set'))
+    }
+
+    const { set } = await res.json()
+    setSets(prev => [...prev, set])
+    return true
+  }
+
+  async function handleAddExercise(exerciseName, fields) {
+    const added = await handleAddSet(exerciseName, fields)
+    if (added) setShowAddExercise(false)
+    return added
   }
 
   const groupedCurrent = useMemo(() => {
     const order = []
     const grouped = {}
+
     for (const s of sets) {
       const ex = (s.exercise || '').trim()
       if (!ex) continue
@@ -371,17 +804,20 @@ export default function SessionDetail() {
       }
       grouped[ex].push(s)
     }
+
     return { order, grouped }
   }, [sets])
 
   const groupedPrevious = useMemo(() => {
     const grouped = {}
+
     for (const s of previousSessionSets) {
       const ex = (s.exercise || '').trim()
       if (!ex) continue
       if (!grouped[ex]) grouped[ex] = []
       grouped[ex].push(s)
     }
+
     return grouped
   }, [previousSessionSets])
 
@@ -393,19 +829,18 @@ export default function SessionDetail() {
     return [
       { label: 'Exercises', value: `${exerciseCount}` },
       { label: 'Sets', value: `${setCount}` },
-      { label: 'Duration', value: session?.duration_mins ? `${session.duration_mins} min` : '—' },
       { label: 'Flags', value: injuryCount ? `${injuryCount} issue${injuryCount === 1 ? '' : 's'}` : 'None' },
     ]
-  }, [groupedCurrent.order.length, sets, session])
+  }, [groupedCurrent.order.length, sets])
 
-  if (loading) return <div className="loading-full">Loading…</div>
-  if (error)   return <div className="loading-full error-text">{error}</div>
+  if (loading) return <div className="loading-full">Loading...</div>
+  if (error) return <div className="loading-full error-text">{error}</div>
   if (!session) return <div className="loading-full">Session not found.</div>
 
   return (
     <div className="detail-page">
       <header className="detail-header">
-        <button className="back-btn" onClick={() => navigate('/')}>← Back</button>
+        <button className="back-btn" onClick={() => navigate('/')}>Back</button>
         <div className="dash-logo">Ave<span>nra</span></div>
       </header>
 
@@ -421,13 +856,13 @@ export default function SessionDetail() {
               {session.session_type && !editingType && (
                 <button className="tag tag-editable" onClick={() => setEditingType(true)} title="Edit session type">
                   {session.session_type}
-                  <svg width="10" height="10" viewBox="0 0 14 14" fill="none" style={{marginLeft: 5, opacity: 0.6}}>
-                    <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                  <svg width="10" height="10" viewBox="0 0 14 14" fill="none" style={{ marginLeft: 5, opacity: 0.6 }}>
+                    <path d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
                   </svg>
                 </button>
               )}
               {session.cardio_flag && <span className="tag tag-dim">Cardio</span>}
-              {session.abs_flag    && <span className="tag tag-dim">Abs</span>}
+              {session.abs_flag && <span className="tag tag-dim">Abs</span>}
             </div>
           </div>
 
@@ -446,8 +881,35 @@ export default function SessionDetail() {
             </div>
           )}
 
-          {session.overall_note && (
-            <p className="detail-overall-note">{session.overall_note}</p>
+          {actionError && <div className="notice warning">{actionError}</div>}
+
+          {editingNote ? (
+            <div className="note-edit-form">
+              <textarea
+                className="note-edit-textarea"
+                value={noteForm}
+                onChange={e => setNoteForm(e.target.value)}
+                placeholder="Session note..."
+                rows={3}
+                autoFocus
+              />
+              <div className="edit-actions" style={{ marginTop: 8 }}>
+                <div />
+                <div className="edit-actions-right">
+                  <button className="edit-btn-cancel" onClick={() => setEditingNote(false)}>Cancel</button>
+                  <button className="edit-btn-save" onClick={saveNote} disabled={savingNote}>
+                    {savingNote ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : session.overall_note ? (
+            <div className="detail-note-row" onClick={startEditNote} title="Edit note">
+              <p className="detail-overall-note">{session.overall_note}</p>
+              <button className="ex-icon-btn note-edit-btn"><EditIcon /></button>
+            </div>
+          ) : (
+            <button className="add-note-btn" onClick={startEditNote}>+ Add session note</button>
           )}
 
           <div className="overview-grid">
@@ -457,10 +919,45 @@ export default function SessionDetail() {
                 <div className="overview-label">{item.label}</div>
               </div>
             ))}
+            <div
+              className="overview-card overview-card-editable"
+              onClick={() => !editingDuration && startEditDuration()}
+              title="Edit duration"
+            >
+              {editingDuration ? (
+                <div className="duration-edit">
+                  <input
+                    className="duration-input"
+                    type="number"
+                    min="1"
+                    value={durationForm}
+                    onChange={e => setDurationForm(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveDuration()
+                      if (e.key === 'Escape') setEditingDuration(false)
+                    }}
+                    autoFocus
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <div className="duration-edit-actions">
+                    <button className="edit-btn-cancel" style={{ fontSize: 11, padding: '3px 8px' }} onClick={e => { e.stopPropagation(); setEditingDuration(false) }}>X</button>
+                    <button className="edit-btn-save" style={{ fontSize: 11, padding: '3px 8px' }} onClick={e => { e.stopPropagation(); saveDuration() }} disabled={savingDuration}>OK</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="overview-value">
+                    {session.duration_mins ? `${session.duration_mins}` : '-'}
+                    {session.duration_mins && <span className="overview-unit"> min</span>}
+                  </div>
+                  <div className="overview-label">Duration</div>
+                </>
+              )}
+            </div>
           </div>
         </section>
 
-        {groupedCurrent.order.length === 0 && (
+        {groupedCurrent.order.length === 0 && !showAddExercise && (
           <p className="no-sets">No sets recorded for this session.</p>
         )}
 
@@ -472,8 +969,57 @@ export default function SessionDetail() {
             previousSets={groupedPrevious[exercise] || []}
             onUpdate={handleUpdateSet}
             onDelete={handleDeleteSet}
+            onRename={handleRenameExercise}
+            onDeleteExercise={handleDeleteExercise}
+            onAddSet={handleAddSet}
+            onError={handleActionError}
           />
         ))}
+
+        {showAddExercise ? (
+          <AddExerciseForm onSave={handleAddExercise} onCancel={() => setShowAddExercise(false)} onError={handleActionError} />
+        ) : (
+          <button className="add-exercise-btn" onClick={() => { clearActionError(); setShowAddExercise(true) }}>
+            + Add exercise
+          </button>
+        )}
+
+        <div className="coaching-note-section">
+          <div className="coaching-note-header">
+            <span className="coaching-note-label">Note for coach</span>
+            <span className="coaching-note-hint">Remembered when planning your next session</span>
+          </div>
+          {editingCoachNote ? (
+            <div className="note-edit-form">
+              <textarea
+                className="note-edit-textarea coaching-note-textarea"
+                value={coachNoteForm}
+                onChange={e => setCoachNoteForm(e.target.value)}
+                placeholder="e.g. Left knee felt tight on squats, keep weight conservative next leg day..."
+                rows={3}
+                autoFocus
+              />
+              <div className="edit-actions" style={{ marginTop: 8 }}>
+                <div />
+                <div className="edit-actions-right">
+                  <button className="edit-btn-cancel" onClick={() => setEditingCoachNote(false)}>Cancel</button>
+                  <button className="edit-btn-save" onClick={saveCoachNote} disabled={savingCoachNote}>
+                    {savingCoachNote ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : session.coaching_note ? (
+            <div className="coaching-note-row" onClick={startEditCoachNote} title="Edit note">
+              <p className="coaching-note-text">{session.coaching_note}</p>
+              <button className="ex-icon-btn note-edit-btn"><EditIcon /></button>
+            </div>
+          ) : (
+            <button className="add-coaching-note-btn" onClick={startEditCoachNote}>
+              + Add note for coach
+            </button>
+          )}
+        </div>
 
         {session.summary && (
           <div className="detail-summary">

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import InstallPrompt from './InstallPrompt.jsx'
+import SupportCTA from './SupportCTA.jsx'
 import './Layout.css'
 
 export default function Layout({ children }) {
@@ -118,6 +119,7 @@ export default function Layout({ children }) {
                   Admin
                 </Link>
               )}
+              <SupportCTA placement="profile_menu" compact />
               <button className="dropdown-item" onClick={handleSignOut}>
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                   <path d="M6 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10 10l3-3-3-3M13 7.5H6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>

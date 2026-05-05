@@ -23,7 +23,8 @@ function formatHistory(sets, sessions, units = 'metric') {
     const dur = sess.duration_mins ? ` | ${sess.duration_mins} min` : ''
     const type = sess.session_type ? ` | ${sess.session_type}` : ''
     lines.push(`\n[${sess.date}${type}${dur}]`)
-    if (sess.overall_note) lines.push(`  Note: ${sess.overall_note}`)
+    if (sess.overall_note)  lines.push(`  Note: ${sess.overall_note}`)
+    if (sess.coaching_note) lines.push(`  Coach note: ${sess.coaching_note}`)
 
     const ssets = (sessionSets[sid] || []).sort((a, b) => (a.set_num || 0) - (b.set_num || 0))
     for (const s of ssets) {

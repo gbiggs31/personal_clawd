@@ -23,6 +23,7 @@ from typing import Optional
 
 import anthropic
 import requests
+import posthog_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -850,6 +851,14 @@ def process_conversation(
         applied_ids = apply_program_updates(user_id, auto_apply_candidates)
         result["applied_count"] = len(applied_ids)
         result["updated"] = len(applied_ids) > 0
+
+        if applied_ids:
+            posthog_analytics.capture(user_id, "coaching_update_applied", {
+                "applied_count": len(applied_ids),
+                "proposed_count": len(persisted_ids),
+                "update_scope": classification.get("update_scope_hint"),
+                "classifier_confidence": classification.get("confidence"),
+            })
 
         logger.info(
             "process_conversation: user=%s proposed=%d applied=%d",

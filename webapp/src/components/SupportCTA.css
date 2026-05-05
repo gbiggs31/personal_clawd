@@ -1,0 +1,50 @@
+/* ── Dropdown / compact variant ─────────────────────────────── */
+
+.support-menu-item {
+  color: var(--muted) !important;
+}
+
+.support-menu-item svg {
+  flex-shrink: 0;
+}
+
+/* ── Inline card variant (post-workout) ─────────────────────── */
+
+.support-inline {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.support-inline-copy {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.support-inline-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.support-inline-btn:hover {
+  border-color: rgba(141, 247, 192, 0.3);
+  background: rgba(141, 247, 192, 0.05);
+}

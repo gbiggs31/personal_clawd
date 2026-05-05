@@ -22,6 +22,7 @@ from openai import AsyncOpenAI
 from gym_db import GymDB, format_history_for_prompt, format_cycle_for_prompt
 from gym_extractor import extract_workout, summarise_cycle, summarise_session, lookup_exercise, classify_session, extract_profile, EXTRACTION_MODEL
 from coaching_pipeline import process_conversation as _pipeline_process
+import posthog_analytics
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -214,9 +215,12 @@ async def check_rate_limit(user_id: str) -> bool:
     """Increment usage counter. Returns True if allowed, False if limit exceeded."""
     loop = asyncio.get_event_loop()
     sheets = await get_sheets()
-    return await loop.run_in_executor(
+    allowed = await loop.run_in_executor(
         None, lambda: sheets.check_and_increment_rate_limit(int(user_id), DAILY_API_LIMIT)
     )
+    if not allowed:
+        posthog_analytics.capture(user_id, "rate_limit_hit", {"daily_limit": DAILY_API_LIMIT})
+    return allowed
 
 _PRIVATE_BETA_MSG = (
     "Avenra is currently in private beta.\n"
@@ -505,6 +509,14 @@ async def _do_log(
         reply += f"\nNote: {result['session_note']}"
     await update.effective_message.reply_text(reply)
 
+    exercise_names = list({s.get("exercise") for s in sets if s.get("exercise")})
+    posthog_analytics.capture(user_id, "workout_sets_logged", {
+        "set_count": len(sets),
+        "exercise_count": len(exercise_names),
+        "has_injury_flag": any(s.get("injury_flag") for s in sets),
+        "confidence": confidence,
+    })
+
 # ── Verbal edit ──────────────────────────────────────────────────────────────
 
 def _detect_edit_intent(text: str) -> bool:
@@ -754,6 +766,9 @@ async def handle_exercise_lookup(
             lambda: lookup_exercise(claude, matched_exercise, history_text, target_context),
         )
         await update.effective_message.reply_text(reply)
+        posthog_analytics.capture(user_id, "exercise_lookup_used", {
+            "session_count": len({s.get("session_id") for s in exercise_sets}),
+        })
     except Exception as e:
         logger.exception("Exercise lookup error")
         await update.effective_message.reply_text(f"Error fetching exercise data: {e}")
@@ -1204,6 +1219,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status == "active":
             first_time = user_id not in _active_users
             _active_users.add(user_id)
+            posthog_analytics.capture(user_id, "user_started", {"is_new_user": first_time})
             if first_time:
                 await _send_onboarding(update)
             else:
@@ -1425,6 +1441,14 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         flags_str = f" + {', '.join(flags)}" if flags else ""
         await update.effective_message.reply_text(f"Session closed{dur_str} — {type_str}{flags_str}.{note_str}")
 
+        posthog_analytics.capture(user_id, "session_completed", {
+            "session_type": type_str,
+            "set_count": len(session_sets),
+            "duration_mins": duration_mins,
+            "has_cardio": classification.get("cardio_flag", False),
+            "has_abs": classification.get("abs_flag", False),
+        })
+
         # Generate and send session summary + coaching notes
         if session_sets:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -1486,6 +1510,7 @@ async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheets = await get_sheets()
         await loop.run_in_executor(None, lambda: sheets.save_feedback(int(user_id), text))
         await update.effective_message.reply_text("Thanks — feedback received.")
+        posthog_analytics.capture(user_id, "feedback_submitted", {"message_length": len(text)})
     except Exception as e:
         logger.exception("Feedback command error")
         await update.effective_message.reply_text(f"Error saving feedback: {e}")
@@ -1540,6 +1565,8 @@ async def cmd_setprofile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await loop.run_in_executor(None, lambda: sheets.update_profile(updates, int(user_id)))
         lines = [f"*{k.replace('_', ' ').title()}:* {v}" for k, v in updates.items()]
         await update.effective_message.reply_text("Profile updated:\n\n" + "\n".join(lines), parse_mode="Markdown")
+        posthog_analytics.capture(user_id, "user_profile_updated", {"fields_updated": list(updates.keys())})
+        posthog_analytics.set_person(user_id, {k: v for k, v in updates.items() if k in ("experience_level",)})
     except Exception as e:
         logger.exception("Profile update error")
         await update.effective_message.reply_text(f"Error: {e}")
@@ -1637,6 +1664,11 @@ async def cmd_confirmcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Goals: {new_cycle['goals']}\n\n"
             f"{plan_preview}"
         )
+        posthog_analytics.capture(user_id, "training_cycle_started", {
+            "cycle_id": cycle_id,
+            "start_date": start_date,
+            "end_date": new_cycle["end_date"],
+        })
     except Exception as e:
         logger.exception("Confirm cycle error")
         await update.effective_message.reply_text(f"Error saving cycle: {e}")
@@ -1679,6 +1711,7 @@ async def cmd_endcycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         note = " ".join(context.args) if context.args else ""
         note_str = f"\nNote: {note}" if note else ""
         await update.effective_message.reply_text(f"Training cycle completed.{note_str}")
+        posthog_analytics.capture(user_id, "training_cycle_ended", {"cycle_id": cycle_id})
     except Exception as e:
         logger.exception("End cycle error")
         await update.effective_message.reply_text(f"Error ending cycle: {e}")

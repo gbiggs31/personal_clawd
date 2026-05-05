@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { parseDateFromNote } from '../lib/parse-date.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -246,10 +247,12 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: false, message: 'No sets found in the workout.' })
   }
 
+  const logDate = parseDateFromNote(text) || today
+
   const rows = sets.map(s => ({
     telegram_user_id: uid,
     session_id: sessionId,
-    date: today,
+    date: logDate,
     exercise: s.exercise || '',
     set_num: s.set_num || 1,
     weight_kg: s.weight_kg ?? null,

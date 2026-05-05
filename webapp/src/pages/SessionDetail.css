@@ -139,13 +139,53 @@
   flex-wrap: wrap;
 }
 
+.exercise-header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.exercise-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.exercise-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
 .exercise-name {
   font-size: 18px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 4px;
   text-transform: capitalize;
   letter-spacing: -0.2px;
+}
+
+.exercise-rename-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.exercise-rename-input {
+  flex: 1;
+  min-width: 140px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(141, 247, 192, 0.35);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 5px 10px;
+  outline: none;
 }
 
 .exercise-prev-line {
@@ -508,6 +548,302 @@
 }
 
 .type-cancel:hover {
+  opacity: 1;
+}
+
+/* ── Exercise icon buttons (rename / delete) ──────────────────── */
+
+.ex-icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.exercise-name-row:hover .ex-icon-btn,
+.exercise-header:hover .ex-icon-btn {
+  opacity: 1;
+}
+
+.ex-icon-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ex-delete-btn:hover,
+.ex-delete-btn.confirming {
+  color: var(--danger) !important;
+  background: rgba(255, 92, 92, 0.1) !important;
+  opacity: 1 !important;
+}
+
+.ex-delete-btn.confirming {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+/* ── Add set / Add exercise ───────────────────────────────────── */
+
+.add-set-form,
+.add-exercise-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.add-set-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.add-set-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  background: none;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  text-align: center;
+}
+
+.add-set-btn:hover {
+  border-color: rgba(141, 247, 192, 0.3);
+  color: var(--accent);
+}
+
+.add-exercise-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  background: none;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  text-align: center;
+}
+
+.add-exercise-btn:hover {
+  border-color: rgba(141, 247, 192, 0.3);
+  color: var(--accent);
+}
+
+.add-exercise-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 6px;
+}
+
+/* ── Session note editing ─────────────────────────────────────── */
+
+.detail-note-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.detail-note-row .detail-overall-note {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.note-edit-btn {
+  opacity: 0;
+  margin-top: 2px;
+}
+
+.detail-note-row:hover .note-edit-btn {
+  opacity: 1;
+}
+
+.note-edit-form {
+  margin-bottom: 16px;
+}
+
+.note-edit-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(141, 247, 192, 0.3);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  outline: none;
+}
+
+.note-edit-textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.add-note-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0 0 16px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  display: block;
+}
+
+.add-note-btn:hover {
+  opacity: 1;
+}
+
+/* ── Duration card editable ───────────────────────────────────── */
+
+.overview-card-editable {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.overview-card-editable:hover {
+  border-color: rgba(141, 247, 192, 0.25);
+  background: rgba(141, 247, 192, 0.04);
+}
+
+.overview-unit {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.duration-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.duration-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(141, 247, 192, 0.35);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 4px 6px;
+  outline: none;
+}
+
+.duration-edit-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* ── Coaching note section ────────────────────────────────────── */
+
+.coaching-note-section {
+  margin-top: 6px;
+  padding: 14px 16px;
+  background: rgba(255, 184, 77, 0.04);
+  border: 1px solid rgba(255, 184, 77, 0.15);
+  border-radius: 14px;
+}
+
+.coaching-note-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.coaching-note-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #ffb84d;
+}
+
+.coaching-note-hint {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.coaching-note-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.coaching-note-text {
+  flex: 1;
+  font-size: 14px;
+  color: #e8c97a;
+  line-height: 1.6;
+  font-style: italic;
+}
+
+.coaching-note-row .note-edit-btn {
+  color: #ffb84d;
+  opacity: 0;
+}
+
+.coaching-note-row:hover .note-edit-btn {
+  opacity: 0.7;
+}
+
+.coaching-note-textarea {
+  border-color: rgba(255, 184, 77, 0.3) !important;
+}
+
+.coaching-note-textarea:focus {
+  border-color: rgba(255, 184, 77, 0.55) !important;
+}
+
+.add-coaching-note-btn {
+  background: none;
+  border: none;
+  color: #ffb84d;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.add-coaching-note-btn:hover {
   opacity: 1;
 }
 

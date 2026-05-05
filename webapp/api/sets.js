@@ -26,6 +26,51 @@ async function authenticate(req) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === 'POST') {
+    const auth = await authenticate(req)
+    if (auth.error) return res.status(auth.status).json({ error: auth.error })
+    const { supabase, uid } = auth
+
+    const { sessionId, exercise, setNum, ...rest } = req.body || {}
+    if (!sessionId || !exercise || setNum == null) {
+      return res.status(400).json({ error: 'sessionId, exercise, and setNum required' })
+    }
+
+    // Verify session ownership and get its date
+    const { data: sessionRow } = await supabase
+      .from('sessions')
+      .select('session_id, date')
+      .eq('session_id', sessionId)
+      .eq('telegram_user_id', uid)
+      .single()
+    if (!sessionRow) return res.status(403).json({ error: 'Session not found' })
+
+    const ALLOWED_INSERT = ['weight_kg', 'reps', 'rpe', 'rir', 'note', 'note_type', 'injury_flag', 'injury_body_part']
+    const safe = Object.fromEntries(
+      Object.entries(rest).filter(([k]) => ALLOWED_INSERT.includes(k))
+    )
+
+    const { data, error: insertError } = await supabase
+      .from('sets')
+      .insert({
+        session_id: sessionId,
+        telegram_user_id: uid,
+        exercise,
+        set_num: setNum,
+        date: sessionRow.date,
+        ...safe,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Set insert error:', insertError)
+      return res.status(500).json({ error: 'Failed to insert set' })
+    }
+
+    return res.status(201).json({ set: data })
+  }
+
   if (req.method === 'PATCH') {
     const auth = await authenticate(req)
     if (auth.error) return res.status(auth.status).json({ error: auth.error })

@@ -66,12 +66,26 @@
 .session-ex-item.in-progress .session-ex-icon { color: #ffb84d; }
 .session-ex-item.pending     .session-ex-icon { color: var(--muted); opacity: 0.5; }
 
-.session-ex-name {
+.session-ex-body {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.session-ex-name {
   color: var(--text);
 }
 
+.session-ex-prescription {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
 .session-ex-item.complete   .session-ex-name { opacity: 0.6; }
+.session-ex-item.complete   .session-ex-prescription { opacity: 0.4; }
 
 .session-ex-meta {
   font-size: 11px;
@@ -548,7 +562,7 @@
 
 .log-end-prompt {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   flex: 1;
   min-width: 0;
@@ -566,6 +580,9 @@
   padding: 4px 2px;
   outline: none;
   transition: border-color 0.15s;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.5;
 }
 .log-end-note:focus { border-color: rgba(141,247,192,0.4); }
 .log-end-note::placeholder { color: var(--muted); opacity: 0.55; }
