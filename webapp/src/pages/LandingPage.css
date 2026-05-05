@@ -61,7 +61,12 @@
   font-size: 0.95rem;
 }
 
-.nav-cta, .btn-primary {
+.landing-root .nav-cta,
+.landing-root .nav-cta:visited,
+.landing-root .nav-cta:active,
+.landing-root .btn-primary,
+.landing-root .btn-primary:visited,
+.landing-root .btn-primary:active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
