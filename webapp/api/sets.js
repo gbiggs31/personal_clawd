@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { authenticateUser } from '../lib/auth.js'
 
 const ALLOWED_FIELDS = [
   'weight_kg', 'reps', 'rpe', 'rir',
@@ -7,27 +7,9 @@ const ALLOWED_FIELDS = [
   'exercise', 'set_num',
 ]
 
-async function authenticate(req) {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return { error: 'Unauthorized', status: 401 }
-
-  const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-  if (authError || !user) return { error: 'Invalid token', status: 401 }
-
-  const { data: authRow } = await supabase
-    .from('user_auth')
-    .select('telegram_user_id')
-    .eq('auth_user_id', user.id)
-    .single()
-  if (!authRow) return { error: 'Not linked', status: 403 }
-
-  return { supabase, uid: authRow.telegram_user_id }
-}
-
 export default async function handler(req, res) {
   if (req.method === 'POST') {
-    const auth = await authenticate(req)
+    const auth = await authenticateUser(req)
     if (auth.error) return res.status(auth.status).json({ error: auth.error })
     const { supabase, uid } = auth
 
@@ -72,7 +54,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
-    const auth = await authenticate(req)
+    const auth = await authenticateUser(req)
     if (auth.error) return res.status(auth.status).json({ error: auth.error })
     const { supabase, uid } = auth
 
@@ -103,7 +85,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
-    const auth = await authenticate(req)
+    const auth = await authenticateUser(req)
     if (auth.error) return res.status(auth.status).json({ error: auth.error })
     const { supabase, uid } = auth
 

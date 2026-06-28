@@ -4,17 +4,14 @@
  * Consolidated handler for user compliance actions.
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { authenticateUser } from '../lib/auth.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Unauthorized' })
-
-  const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-  const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user) return res.status(401).json({ error: 'Invalid token' })
+  const auth = await authenticateUser(req, { requireLink: false })
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const { supabase, user, uid } = auth
 
   const { action } = req.query
 
@@ -44,12 +41,7 @@ export default async function handler(req, res) {
   }
 
   if (action === 'update-session') {
-    const { data: authRow } = await supabase
-      .from('user_auth')
-      .select('telegram_user_id')
-      .eq('auth_user_id', user.id)
-      .single()
-    if (!authRow) return res.status(403).json({ error: 'Not linked' })
+    if (!uid) return res.status(403).json({ error: 'Not linked' })
 
     const { sessionId, fields } = req.body || {}
     if (!sessionId || !fields || typeof fields !== 'object') {
@@ -68,7 +60,7 @@ export default async function handler(req, res) {
       .from('sessions')
       .update(safe)
       .eq('session_id', sessionId)
-      .eq('telegram_user_id', authRow.telegram_user_id)
+      .eq('telegram_user_id', uid)
 
     if (updateError) return res.status(500).json({ error: updateError.message })
     return res.json({ ok: true })

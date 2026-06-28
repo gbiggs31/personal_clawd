@@ -14,7 +14,7 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL
 
 export default async function handler(req, res) {
   if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {

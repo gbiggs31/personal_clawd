@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { createClient } from '@supabase/supabase-js'
+import { authenticateUser } from '../lib/auth.js'
 import { parseDateFromNote } from '../lib/parse-date.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -134,22 +134,10 @@ function formatReply(sets, logUnits = 'kg') {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+  const auth = await authenticateUser(req)
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  const { supabase, uid } = auth
 
-  const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-  if (authError || !user) return res.status(401).json({ error: 'Invalid token' })
-
-  const { data: authRow } = await supabase
-    .from('user_auth')
-    .select('telegram_user_id')
-    .eq('auth_user_id', user.id)
-    .single()
-  if (!authRow) return res.status(403).json({ error: 'Account not linked to Telegram' })
-
-  const uid = authRow.telegram_user_id
   const { text, sessionId: incomingSessionId, clarification, partialParse } = req.body
   if (!text?.trim()) return res.status(400).json({ error: 'No text provided' })
 

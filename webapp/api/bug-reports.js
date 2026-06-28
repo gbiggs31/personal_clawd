@@ -1,24 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
-
-async function authenticate(req) {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return { error: 'Unauthorized', status: 401 }
-
-  const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-  if (authError || !user) return { error: 'Invalid token', status: 401 }
-
-  const { data: authRow } = await supabase
-    .from('user_auth')
-    .select('telegram_user_id')
-    .eq('auth_user_id', user.id)
-    .single()
-
-  return { supabase, user, uid: authRow?.telegram_user_id || null }
-}
+import { authenticateUser } from '../lib/auth.js'
 
 function isAdmin(user) {
-  return user?.email === process.env.VITE_ADMIN_EMAIL
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL
+  return Boolean(adminEmail) && user?.email === adminEmail
 }
 
 function normalizePageUrl(value) {
@@ -36,7 +20,7 @@ function normalizePageUrl(value) {
 export default async function handler(req, res) {
   // POST - any authenticated user can submit a report
   if (req.method === 'POST') {
-    const auth = await authenticate(req)
+    const auth = await authenticateUser(req, { requireLink: false })
     if (auth.error) return res.status(auth.status).json({ error: auth.error })
     const { supabase, uid } = auth
 
@@ -66,7 +50,7 @@ export default async function handler(req, res) {
 
   // GET - admin only, returns all reports
   if (req.method === 'GET') {
-    const auth = await authenticate(req)
+    const auth = await authenticateUser(req, { requireLink: false })
     if (auth.error) return res.status(auth.status).json({ error: auth.error })
     if (!isAdmin(auth.user)) return res.status(403).json({ error: 'Forbidden' })
     const { supabase } = auth
@@ -91,7 +75,7 @@ export default async function handler(req, res) {
 
   // PATCH - admin only, update status
   if (req.method === 'PATCH') {
-    const auth = await authenticate(req)
+    const auth = await authenticateUser(req, { requireLink: false })
     if (auth.error) return res.status(auth.status).json({ error: auth.error })
     if (!isAdmin(auth.user)) return res.status(403).json({ error: 'Forbidden' })
     const { supabase } = auth
