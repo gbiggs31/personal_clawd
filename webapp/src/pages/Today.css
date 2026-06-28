@@ -259,6 +259,81 @@
   line-height: 1.5;
 }
 
+/* ── "Last time" recall ────────────────────────────────────────── */
+
+.today-lasttime {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.today-lasttime-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+}
+
+.tlt-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.tlt-value {
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tlt-delta {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.tlt-delta.up   { background: rgba(141,247,192,0.1); color: var(--accent); }
+.tlt-delta.down { background: rgba(248,113,113,0.1); color: var(--danger); }
+.tlt-delta.flat { background: rgba(255,255,255,0.05); color: var(--muted); }
+
+.tlt-chev {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.today-lasttime-detail {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tlt-row {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.tlt-date {
+  color: var(--muted);
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+.tlt-sets {
+  color: #d4d8df;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Coaching notes ────────────────────────────────────────────── */
 
 .today-coaching-box {

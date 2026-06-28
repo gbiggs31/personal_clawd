@@ -323,6 +323,135 @@
   text-align: center;
 }
 
+/* ── Recent sessions ──────────────────────────────────────────── */
+
+.recent-sessions {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recent-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.rs-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.rs-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rs-date-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.rs-date-btn:hover { color: var(--accent); }
+
+.prog-delta {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.prog-delta.up   { background: rgba(141,247,192,0.1); color: var(--accent); }
+.prog-delta.down { background: rgba(248,113,113,0.1); color: var(--danger); }
+.prog-delta.flat { background: rgba(255,255,255,0.05); color: var(--muted); }
+
+.rs-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rs-set {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.rs-set-main {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.rs-badge {
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.rs-badge.injury {
+  color: var(--danger);
+  background: rgba(248,113,113,0.1);
+}
+
+.rs-note {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.rs-coaching {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.rs-coaching-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.rs-coaching-text {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.recent-more {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
 /* ── Mobile ───────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {

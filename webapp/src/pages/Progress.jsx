@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../utils/supabase.js'
-import { normalizeExercise, displayExercise, getTopSet } from '../utils/training.js'
+import {
+  normalizeExercise, displayExercise, getTopSet,
+  buildExerciseHistory, compareTopSets, formatWeightRep,
+} from '../utils/training.js'
 import './Progress.css'
 
 // ── Metric definitions ────────────────────────────────────────────────────────
@@ -169,9 +173,68 @@ function ExerciseSearch({ exercises, selected, onSelect }) {
   )
 }
 
+// ── Recent sessions (read-only) ───────────────────────────────────────────────
+
+function DeltaBadge({ delta }) {
+  if (!delta) return null
+  return (
+    <span className={`prog-delta ${delta.direction}`}>
+      {delta.direction === 'up' && '↑ '}
+      {delta.direction === 'down' && '↓ '}
+      {delta.direction === 'flat' && '= '}
+      {delta.text}
+    </span>
+  )
+}
+
+function SetLine({ set }) {
+  return (
+    <div className="rs-set">
+      <span className="rs-set-main">{formatWeightRep(set) || '—'}</span>
+      {set.rpe != null && <span className="rs-badge">RPE {set.rpe}</span>}
+      {set.rir != null && <span className="rs-badge">RIR {set.rir}</span>}
+      {set.injury_flag && <span className="rs-badge injury">⚠ {set.injury_body_part || 'injury'}</span>}
+      {set.note && <span className="rs-note">{set.note}{set.note_type && set.note_type !== 'set' ? ` (${set.note_type})` : ''}</span>}
+    </div>
+  )
+}
+
+function RecentSessionCard({ sess, delta, expanded, onToggle, onOpen }) {
+  const meta = sess.meta
+  const header = [
+    fmtLong(sess.date),
+    meta?.session_type,
+    meta?.duration_mins ? `${meta.duration_mins} min` : null,
+  ].filter(Boolean).join(' · ')
+  const coaching = [meta?.overall_note, meta?.summary].filter(Boolean).join('\n\n')
+
+  return (
+    <div className="rs-card">
+      <div className="rs-card-head">
+        <button className="rs-date-btn" onClick={onOpen} title="Open session">{header}</button>
+        <DeltaBadge delta={delta} />
+      </div>
+      <div className="rs-sets">
+        {sess.sets.map(s => <SetLine key={s.id ?? `${s.set_num}-${s.weight_kg}-${s.reps}`} set={s} />)}
+      </div>
+      {coaching && (
+        <div className="rs-coaching">
+          <button className="rs-coaching-toggle" onClick={onToggle}>
+            {expanded ? '▾ coaching notes' : '▸ coaching notes'}
+          </button>
+          {expanded && <p className="rs-coaching-text">{coaching}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const RECENT_DEFAULT = 5
+
 export default function Progress() {
+  const navigate = useNavigate()
   const [exercises, setExercises]   = useState([])
   const [selectedEx, setSelectedEx] = useState('')
   const [exSets, setExSets]         = useState([])
@@ -179,6 +242,9 @@ export default function Progress() {
   const [loadingEx, setLoadingEx]   = useState(false)
   const [metricKey, setMetricKey]   = useState('top_weight')
   const [rangeKey, setRangeKey]     = useState('90d')
+  const [sessionMeta, setSessionMeta] = useState({})   // session_id → { date, session_type, summary, ... }
+  const [showAllRecent, setShowAllRecent] = useState(false)
+  const [expandedRecent, setExpandedRecent] = useState(() => new Set())
 
   // Load distinct exercise names once
   useEffect(() => {
@@ -198,6 +264,8 @@ export default function Progress() {
 
   // Load sets when exercise changes
   useEffect(() => {
+    setShowAllRecent(false)
+    setExpandedRecent(new Set())
     if (!selectedEx) { setExSets([]); return }
     setLoadingEx(true)
     supabase
@@ -210,6 +278,28 @@ export default function Progress() {
         setLoadingEx(false)
       })
   }, [selectedEx])
+
+  // Load session metadata (type, summary, notes) for the loaded sets' sessions
+  useEffect(() => {
+    const ids = [...new Set(exSets.map(s => s.session_id).filter(Boolean))]
+    if (!ids.length) { setSessionMeta({}); return }
+    supabase
+      .from('sessions')
+      .select('session_id, date, session_type, summary, overall_note, duration_mins')
+      .in('session_id', ids)
+      .then(({ data }) => {
+        const map = {}
+        for (const row of data || []) map[row.session_id] = row
+        setSessionMeta(map)
+      })
+  }, [exSets])
+
+  // Recent sessions for the selected exercise (newest first, range-independent)
+  const recentSessions = useMemo(() => {
+    if (!exSets.length) return []
+    const hist = buildExerciseHistory(exSets)[normalizeExercise(selectedEx)] || []
+    return hist.map(s => ({ ...s, meta: sessionMeta[s.session_id] || null }))
+  }, [exSets, sessionMeta, selectedEx])
 
   const metric = METRICS.find(m => m.key === metricKey) ?? METRICS[0]
   const range  = RANGES.find(r => r.key === rangeKey)   ?? RANGES[1]
@@ -248,6 +338,14 @@ export default function Progress() {
     const diff  = Math.round((last - first) * 10) / 10
     return { sessions: chartData.length, best, last, diff }
   }, [chartData])
+
+  function toggleRecent(sessionId) {
+    setExpandedRecent(prev => {
+      const next = new Set(prev)
+      next.has(sessionId) ? next.delete(sessionId) : next.add(sessionId)
+      return next
+    })
+  }
 
   if (loadingInit) return <div className="loading-full">Loading…</div>
 
@@ -369,23 +467,29 @@ export default function Progress() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-
-                {/* History table */}
-                <div className="history-table">
-                  <div className="history-table-head">
-                    <span>Date</span>
-                    <span>Sets</span>
-                    <span>{metric.label}</span>
-                  </div>
-                  {[...chartData].reverse().map(({ date, value, sets }) => (
-                    <div key={date + sets.length} className="history-table-row">
-                      <span className="ht-date">{fmtLong(date)}</span>
-                      <span className="ht-sets">{sets.length}</span>
-                      <span className="ht-value">{value}<span className="ht-unit"> {metric.unit}</span></span>
-                    </div>
-                  ))}
-                </div>
               </>
+            )}
+
+            {/* Recent sessions — actual sets + coaching notes (range-independent) */}
+            {recentSessions.length > 0 && (
+              <div className="recent-sessions">
+                <div className="recent-head">Recent sessions</div>
+                {(showAllRecent ? recentSessions : recentSessions.slice(0, RECENT_DEFAULT)).map((sess, i) => (
+                  <RecentSessionCard
+                    key={sess.session_id}
+                    sess={sess}
+                    delta={compareTopSets(sess.topSet, recentSessions[i + 1]?.topSet)}
+                    expanded={expandedRecent.has(sess.session_id)}
+                    onToggle={() => toggleRecent(sess.session_id)}
+                    onOpen={() => navigate(`/session/${sess.session_id}`)}
+                  />
+                ))}
+                {recentSessions.length > RECENT_DEFAULT && (
+                  <button className="recent-more" onClick={() => setShowAllRecent(v => !v)}>
+                    {showAllRecent ? 'Show less' : `Show ${recentSessions.length - RECENT_DEFAULT} more`}
+                  </button>
+                )}
+              </div>
             )}
           </>
         )}

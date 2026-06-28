@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+import { buildExerciseHistory, compareTopSets, normalizeExercise } from '../utils/training.js'
 import StravaContextCard from '../components/StravaContextCard.jsx'
 import './Today.css'
 
@@ -166,7 +167,64 @@ function WeekStrip() {
   )
 }
 
-function TodaySessionCard({ plan, loading, onRefresh }) {
+// Format a set's weight × reps in the user's unit. Stored weights are kg;
+// the plan card already shows imperial users lbs, so match that here.
+function fmtSet(set, units) {
+  const reps = set.reps ?? '?'
+  if (set.weight_kg == null) return `BW × ${reps}`
+  const w = units === 'imperial' ? `${Math.round(set.weight_kg * 2.20462)}lbs` : `${set.weight_kg}kg`
+  return `${w} × ${reps}`
+}
+
+function fmtShortDate(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+// "last time" recall for a single plan exercise, expandable to recent sessions.
+function LastTime({ sessions, units }) {
+  const [open, setOpen] = useState(false)
+  if (!sessions?.length) return null
+  const recent = sessions.slice(0, 3)
+  const top = recent[0].topSet
+  if (!top) return null
+  const delta = compareTopSets(recent[0].topSet, recent[1]?.topSet)
+
+  return (
+    <div className="today-lasttime">
+      <button
+        type="button"
+        className="today-lasttime-summary"
+        onClick={() => sessions.length > 1 && setOpen(o => !o)}
+        style={{ cursor: sessions.length > 1 ? 'pointer' : 'default' }}
+      >
+        <span className="tlt-label">last time</span>
+        <span className="tlt-value">{fmtSet(top, units)}</span>
+        {delta && (
+          <span className={`tlt-delta ${delta.direction}`}>
+            {delta.direction === 'up' && '↑'}
+            {delta.direction === 'down' && '↓'}
+            {delta.direction === 'flat' && '='}
+            {units !== 'imperial' ? ` ${delta.text}` : ''}
+          </span>
+        )}
+        {sessions.length > 1 && <span className="tlt-chev">{open ? '▾' : '▸'}</span>}
+      </button>
+      {open && (
+        <div className="today-lasttime-detail">
+          {recent.map(s => (
+            <div key={s.session_id} className="tlt-row">
+              <span className="tlt-date">{fmtShortDate(s.date)}</span>
+              <span className="tlt-sets">{s.sets.map(set => fmtSet(set, units)).join(', ')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TodaySessionCard({ plan, loading, onRefresh, history }) {
   if (loading) {
     return (
       <section className="today-session-card">
@@ -209,6 +267,7 @@ function TodaySessionCard({ plan, loading, onRefresh }) {
                 {ex.repTargets?.join(' / ')}
               </div>
               {ex.note && <div className="today-exercise-note">{ex.note}</div>}
+              <LastTime sessions={history?.[normalizeExercise(ex.name)]} units={plan.units} />
             </div>
           ))}
         </div>
@@ -230,6 +289,7 @@ export default function Today() {
   const navigate = useNavigate()
   const [sessionPlan, setSessionPlan]   = useState(null)
   const [planLoading, setPlanLoading]   = useState(false)
+  const [exHistory, setExHistory]       = useState({})   // normEx → recent sessions
   const [showModify,  setShowModify]    = useState(false)
   const [showSuggest, setShowSuggest]   = useState(false)
   const [modifyText,  setModifyText]    = useState('')
@@ -261,9 +321,25 @@ export default function Today() {
     }
   }
 
+  // Load recent set history (for the "last time" hints) — independent of the plan.
+  async function loadHistory() {
+    try {
+      const cutoff = new Date(Date.now() - 120 * 86_400_000).toISOString().split('T')[0]
+      const { data } = await supabase
+        .from('sets')
+        .select('exercise, weight_kg, reps, rpe, rir, set_num, date, session_id, note, injury_flag, injury_body_part')
+        .gte('date', cutoff)
+        .order('date')
+      setExHistory(buildExerciseHistory(data || []))
+    } catch { /* non-fatal — hints just won't show */ }
+  }
+
   useEffect(() => {
-    // Only auto-load plan for returning users
-    if (!onboardStep) loadPlan()
+    // Only auto-load for returning users
+    if (!onboardStep) {
+      loadPlan()
+      loadHistory()
+    }
   }, [])
 
   function completeOnboarding() {
@@ -292,6 +368,7 @@ export default function Today() {
     completeOnboarding()
     setOnboardStep('plan')
     await loadPlan()
+    loadHistory()
     setOnboardStep(null)
     setQuizLoading(false)
   }
@@ -438,6 +515,7 @@ export default function Today() {
         plan={sessionPlan}
         loading={planLoading}
         onRefresh={() => loadPlan()}
+        history={exHistory}
       />
 
       {sessionPlan && !planLoading && (

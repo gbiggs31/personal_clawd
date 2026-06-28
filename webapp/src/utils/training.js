@@ -36,6 +36,43 @@ export function getTopSet(sets) {
 }
 
 /**
+ * Group a flat array of set rows by normalized exercise, then by session.
+ *
+ * Returns { normEx: [{ session_id, date, sets, topSet }, ...] } where each
+ * exercise's session list is ordered most-recent-first and `sets` is ordered by
+ * set_num. Used to surface "recent sessions for this exercise" views.
+ */
+export function buildExerciseHistory(sets) {
+  const byExercise = {}
+
+  for (const row of sets || []) {
+    const norm = normalizeExercise(row.exercise)
+    if (!norm) continue
+    const sid = row.session_id || ''
+    if (!byExercise[norm]) byExercise[norm] = {}
+    if (!byExercise[norm][sid]) byExercise[norm][sid] = []
+    byExercise[norm][sid].push(row)
+  }
+
+  const result = {}
+  for (const [norm, sessions] of Object.entries(byExercise)) {
+    result[norm] = Object.entries(sessions)
+      .map(([session_id, exSets]) => {
+        const ordered = [...exSets].sort((a, b) => (a.set_num ?? 0) - (b.set_num ?? 0))
+        return {
+          session_id,
+          date: ordered[0]?.date || '',
+          sets: ordered,
+          topSet: getTopSet(ordered),
+        }
+      })
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+  }
+
+  return result
+}
+
+/**
  * Compare two top sets and return a direction + text delta.
  */
 export function compareTopSets(current, previous) {
