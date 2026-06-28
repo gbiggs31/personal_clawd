@@ -1,101 +1,84 @@
-# The Claw 🦀
+# Avenra
 
-A personal Telegram bot powered by Claude. Send it messages, get Claude responses, with persistent conversation memory. Phase 2 adds an ensemble mode that queries Claude and GPT-4o in parallel and synthesises the results.
+Talk to your gym log. Avenra turns natural-language workout messages into
+structured training data, then uses that history to answer questions, spot
+trends, and generate training plans.
+
+> This repo started life as a personal Claude Telegram bot ("The Claw") and grew
+> into Avenra. The git history still reflects that origin.
 
 ---
 
-## Phase 1 — Claude bot
+## Components
 
-### Setup
+The project is three pieces that share one Supabase database:
 
-**1. Install dependencies**
+| Path | What it is | Runtime / hosting |
+|---|---|---|
+| `webapp/` | The Avenra app — React + Vite frontend and serverless API | Vercel (root dir = `webapp/`) |
+| `bot.py` + `gym_*.py`, `coaching_pipeline.py` | Telegram bot that ingests natural-language gym logs and runs the coaching pipeline | Python, runs on a VM |
+| `index.html`, `landing.html`, `signup.html` | Marketing / landing site | GitHub Pages (`CNAME` → avenra.biggsdata.com) |
+
+The webapp is self-contained — its `api/` and `lib/` import nothing outside
+`webapp/`. The bot and webapp are coupled only through the shared Supabase
+database (`telegram_user_id`, and tables like `sets`, `sessions`, `profile`).
+
+---
+
+## Webapp (`webapp/`)
+
+Vite + React frontend with Vercel serverless functions under `webapp/api/`.
+
+```bash
+cd webapp
+npm install
+cp .env.example .env   # fill in Supabase + PostHog keys
+npm run dev            # local dev server
+npm run build          # production build
+```
+
+Server-side env vars (set in Vercel, not committed): `VITE_SUPABASE_URL`,
+`SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY`, `ADMIN_EMAIL`, plus the Strava and
+cron secrets used by `api/strava.js`. A daily Strava sync runs via the cron
+defined in `webapp/vercel.json`.
+
+Request auth for every endpoint is centralised in `webapp/lib/auth.js`
+(`authenticateUser`): it validates the Supabase Bearer token and maps the
+account to its `telegram_user_id`.
+
+---
+
+## Telegram bot (`bot.py`)
+
+Ingests gym logs sent over Telegram, extracts structured sets with Claude
+(`gym_extractor.py`), persists to Supabase (`gym_db.py`), and runs the coaching
+pipeline (`coaching_pipeline.py`).
+
 ```bash
 pip install -r requirements.txt
-```
-
-**2. Create your Telegram bot**
-1. Open Telegram and message **@BotFather**
-2. Send `/newbot` and follow the prompts
-3. Copy the bot token you receive
-
-**3. Get your Anthropic API key**
-1. Go to **console.anthropic.com**
-2. Create an API key under Account > API Keys
-
-**4. Configure environment variables**
-```bash
-cp .env.example .env
-```
-Then edit `.env` and fill in your keys.
-
-**5. Run the bot**
-```bash
+cp .env.example .env   # TELEGRAM_TOKEN, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+                       # SUPABASE_URL, SUPABASE_SERVICE_KEY, ...
 python bot.py
 ```
 
-Then open Telegram, find your bot, and start messaging it.
-
-### Commands
-
-| Command | Description |
-|---|---|
-| `/start` | Show help message |
-| `/clear` | Clear your conversation history |
-| `/history` | Show how many messages are stored |
-| `/claw` | All hail the Claw 🦀 |
-
-### Notes
-- Conversation history is saved to `conversation_history.json` — persists across restarts
-- History is trimmed to the last 20 exchanges per user to keep API costs low
-- To change the bot's personality, edit `SYSTEM_PROMPT` in `bot.py`
-- To use a different Claude model, change the `model` parameter in `query_claude()`
+Database schema lives in `schema.sql`, `coaching_schema.sql`, and
+`webapp_schema.sql`. To run the bot 24/7, deploy to a cheap VPS
+(Hetzner, DigitalOcean) or a free tier on Railway/Render.
 
 ---
 
-## Phase 2 — Ensemble mode
+## Landing site
 
-Prefix any message with `ensemble:` to query both Claude and GPT-4o simultaneously. The bot returns each model's response individually, then a synthesised answer highlighting agreements, differences, and lower-confidence areas where the models disagreed.
-
-**Example:**
-```
-ensemble: what is the best way to learn chess as an adult?
-```
-
-### Additional setup for Phase 2
-
-**1. Get an OpenAI API key**
-1. Go to **platform.openai.com**
-2. Create an API key under API Keys
-
-**2. Add it to your `.env`**
-```
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-**3. Install the updated dependencies**
-```bash
-pip install -r requirements.txt
-```
-
-### How it works
-- Both models are queried in parallel using `asyncio.gather` — no sequential waiting
-- If one model fails, the other still responds gracefully
-- Synthesis is skipped if only one model responds
-- Ensemble queries run without conversation history — each is a fresh, independent context
+Static HTML at the repo root, served by GitHub Pages. The custom domain is set
+by the root `CNAME` file (avenra.biggsdata.com).
 
 ---
 
-## Keeping it running
+## Analytics (PostHog)
 
-To run 24/7, deploy to a cheap VPS (Hetzner, DigitalOcean) or a free tier on Railway/Render.
+PostHog is split across the two runtimes:
 
-## Analytics setup
-
-PostHog is split across the two runtimes in this repo:
-
-- `webapp/` frontend on Vercel:
-  set `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in Vercel project environment variables.
-- Python bot / coaching worker on your VM:
-  set `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` in the VM's `.env` or process environment.
-
-The frontend token is expected to be browser-visible. The bot variables stay on the server.
+- `webapp/` frontend on Vercel: set `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST`
+  in the Vercel project environment variables (browser-visible by design).
+- Python bot / coaching worker on the VM: set `POSTHOG_PROJECT_TOKEN` and
+  `POSTHOG_HOST` in the VM's environment (server-only).
