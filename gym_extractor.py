@@ -6,7 +6,15 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_MODEL = "claude-sonnet-4-6"
+# Model selection mirrors the webapp (webapp/lib/models.js):
+#   HAIKU  — mechanical/structured work (log parsing, classification, profile extraction)
+#   SONNET — where coaching quality is the product (exercise lookup, session/cycle summaries)
+MODEL_SONNET = "claude-sonnet-4-6"
+MODEL_HAIKU = "claude-haiku-4-5-20251001"
+
+# Default model for the mechanical extraction path. Also recorded as provenance
+# on each saved set (imported by bot.py as extraction_model).
+EXTRACTION_MODEL = MODEL_HAIKU
 
 EXTRACTION_SYSTEM = """You are a gym log parser. Extract structured workout data from natural language input.
 
@@ -105,9 +113,15 @@ Return ONLY valid JSON — no preamble, no markdown fences:
 }"""
 
 
-def _call_claude(client: anthropic.Anthropic, system: str, messages: list, max_tokens: int = 2048) -> str:
+def _call_claude(
+    client: anthropic.Anthropic,
+    system: str,
+    messages: list,
+    max_tokens: int = 2048,
+    model: str = EXTRACTION_MODEL,
+) -> str:
     response = client.messages.create(
-        model=EXTRACTION_MODEL,
+        model=model,
         max_tokens=max_tokens,
         system=system,
         messages=messages,
@@ -250,6 +264,7 @@ def lookup_exercise(
         client,
         EXERCISE_LOOKUP_SYSTEM,
         [{"role": "user", "content": user_content}],
+        model=MODEL_SONNET,
     )
 
 
@@ -354,6 +369,7 @@ def summarise_session(
         SESSION_SUMMARY_SYSTEM,
         [{"role": "user", "content": user_content}],
         max_tokens=512,
+        model=MODEL_SONNET,
     )
 
 
@@ -372,7 +388,7 @@ def summarise_cycle(
         "and end date. Return only valid JSON matching the schema."
     )
     messages = planning_history + [{"role": "user", "content": instruction}]
-    raw = _call_claude(client, CYCLE_SUMMARY_SYSTEM, messages)
+    raw = _call_claude(client, CYCLE_SUMMARY_SYSTEM, messages, model=MODEL_SONNET)
 
     try:
         return json.loads(raw)

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
+import { MODEL_SONNET, MODEL_HAIKU, cachedSystem } from '../lib/models.js'
 import { coachingStyleNote } from '../lib/coaching-style.js'
 import { parseDateFromNote } from '../lib/parse-date.js'
 
@@ -154,7 +155,7 @@ export default async function handler(req, res) {
     const exercises = [...new Set(sessionSets.map(s => s.exercise).filter(Boolean))]
     const classifyRes = await anthropic.messages.create(
       {
-        model: 'claude-sonnet-4-6',
+        model: MODEL_HAIKU,
         max_tokens: 120,
         system: SESSION_CLASSIFY_SYSTEM,
         messages: [{ role: 'user', content: `Exercises: ${exercises.join(', ')}` }],
@@ -194,9 +195,9 @@ export default async function handler(req, res) {
   try {
     const summaryRes = await anthropic.messages.create(
       {
-        model: 'claude-sonnet-4-6',
+        model: MODEL_SONNET,
         max_tokens: 512,
-        system: styleNote ? `${SESSION_SUMMARY_SYSTEM}\n\n${styleNote}` : SESSION_SUMMARY_SYSTEM,
+        system: cachedSystem(SESSION_SUMMARY_SYSTEM, styleNote ? `\n\n${styleNote}` : ''),
         messages: [{ role: 'user', content: summaryContent }],
       },
       { signal: AbortSignal.timeout(30_000) }

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
+import { MODEL_HAIKU, cachedSystem } from '../lib/models.js'
 import { parseDateFromNote } from '../lib/parse-date.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -163,11 +164,13 @@ export default async function handler(req, res) {
   const profileMap = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
   const logUnits = profileMap.log_units || (profileMap.units === 'imperial' ? 'lbs' : 'kg')
 
-  // Inject the default unit assumption into the extraction prompt
+  // Inject the default unit assumption into the extraction prompt.
+  // The big static spec is cached; the small per-user unit rule rides as a
+  // separate trailing block so the cached prefix is identical across users.
   const unitRule = logUnits === 'lbs'
     ? 'When a weight is given with no unit, treat it as lbs and convert to kg for weight_kg (divide by 2.20462, round to 1 decimal). Weights explicitly marked kg stay as kg; weights explicitly marked lbs are also converted to kg.'
     : 'When a weight is given with no unit, treat it as kg.'
-  const extractionSystem = EXTRACTION_SYSTEM + `\n\n### Default weight unit\n${unitRule}`
+  const extractionSystem = cachedSystem(EXTRACTION_SYSTEM, `\n\n### Default weight unit\n${unitRule}`)
 
   // Build prompt — second-pass clarification or fresh parse
   let userContent
@@ -192,7 +195,7 @@ export default async function handler(req, res) {
 
   const parseResponse = await anthropic.messages.create(
     {
-      model: 'claude-sonnet-4-6',
+      model: MODEL_HAIKU,
       max_tokens: 2048,
       system: extractionSystem,
       messages: [{ role: 'user', content: userContent }],
@@ -253,7 +256,7 @@ export default async function handler(req, res) {
     injury_body_part: s.injury_body_part ?? null,
     extras: s.extras ?? null,
     raw_input: text,
-    extraction_model: 'claude-sonnet-4-6',
+    extraction_model: MODEL_HAIKU,
   }))
 
   const { error: insertError } = await supabase.from('sets').insert(rows)

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
+import { MODEL_SONNET } from '../lib/models.js'
 import { getStravaContext } from '../lib/strava-context.js'
 import { coachingStyleNote } from '../lib/coaching-style.js'
 
@@ -91,7 +92,7 @@ export default async function handler(req, res) {
     try {
       const response = await anthropic.messages.create(
         {
-          model: 'claude-sonnet-4-6',
+          model: MODEL_SONNET,
           max_tokens: 1024,
           system: `You are Avenra, an AI strength-training coach. The user wants to modify their training plan for today.
 
@@ -232,7 +233,7 @@ ${SCHEMA}`
   try {
     const response = await anthropic.messages.create(
       {
-        model: 'claude-sonnet-4-6',
+        model: MODEL_SONNET,
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: 'Generate my plan for today.' }],

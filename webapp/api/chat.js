@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
+import { MODEL_SONNET, cachedSystem } from '../lib/models.js'
 import { getStravaContext } from '../lib/strava-context.js'
 import { coachingStyleNote } from '../lib/coaching-style.js'
 
@@ -156,9 +157,11 @@ ${historyStr}`
   try {
     const stream = anthropic.messages.stream(
       {
-        model: 'claude-sonnet-4-6',
+        model: MODEL_SONNET,
         max_tokens: 1024,
-        system,
+        // Cache the system block (instructions + 90-day history): the turns of a
+        // single conversation reuse it within the 5-min TTL at ~10% input cost.
+        system: cachedSystem(system),
         messages: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
       },
       { signal: AbortSignal.timeout(45_000) }
