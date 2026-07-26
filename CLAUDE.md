@@ -67,12 +67,22 @@ Schema lives in three SQL files, applied by hand in the Supabase SQL editor.
 | `coaching_schema.sql` | `program_state`, `program_updates`, `program_change_log` (Python pipeline) |
 | `webapp_schema.sql` | `user_auth`, RLS policies, `link_auth_account()` RPC, plus the reconstructed tables and RLS in §8–9 |
 
-⚠️ **Schema drift.** `chat_messages`, `bug_reports`, `consent_records` and
-`deletion_requests` existed only in the live Supabase project; `webapp_schema.sql`
-§8 now carries DDL for them **reconstructed from application code**, not dumped
-from the database. It is `IF NOT EXISTS` throughout, so it's a fresh-install
-fallback rather than a source of truth — diff it against the live schema before
-trusting it. `strava_connections` and `strava_activities_normalized` are
+⚠️ **Schema drift.** `bug_reports`, `consent_records` and `deletion_requests`
+existed only in the live Supabase project; `webapp_schema.sql` §8 now carries DDL
+for them **reconstructed from application code**, not dumped from the database.
+It is `IF NOT EXISTS` throughout, so it's a fresh-install fallback rather than a
+source of truth — diff it against the live schema before trusting it.
+
+🔴 **`chat_messages` does not exist in the live database.** Verified against the
+project 2026-07-26: `to_regclass('public.chat_messages')` returns null. It is not
+drift — the table was never created, and `api/chat.js`, `api/lift.js` and
+`lib/rate-limit.js` have all been writing to and reading from a missing table.
+`rate_limits` is *not* it (that's the Python bot's daily `api_calls` counter,
+keyed on `telegram_user_id`). **Run `webapp_schema.sql` §8 before deploying any
+build where `lib/rate-limit.js` exists** — the limiter fails closed, so a missing
+table denies every chat and `/lift` request. The older inline limiter in
+`chat.js` ignored the query error and read `null` as `0`, which is why this has
+been invisible: AI chat has simply been unmetered rather than broken. `strava_connections` and `strava_activities_normalized` are
 deliberately *not* reconstructed (their token/score columns can't be inferred
 safely) and must be dumped from the live project.
 
@@ -107,12 +117,27 @@ Exception to watch: `api/today-plan.js` returns plan weights in the field
 The frontend renders it verbatim.
 
 ### RLS
-`sets`, `sessions`, `cycles`, `user_auth`, and the `program_*` tables have RLS
-with owner-read policies. The browser reads these directly with the anon key
-(scoped by RLS). `profile`, `chat_messages`, `bug_reports`, `consent_records`,
-`deletion_requests` and the Strava tables get RLS **with no policy** — the API
-reads them with the service-role key, so deny-by-default costs nothing and
-stops the browser-visible anon key reading other users' rows.
+**Verified against the live project 2026-07-26: every table in `public` already
+has `rowsecurity = true`.** §9 of `webapp_schema.sql` is therefore a no-op on
+this install; it exists for fresh ones.
+
+`sets`, `sessions`, `cycles` and `user_auth` have owner-read `SELECT` policies —
+the browser reads these directly with the anon key, scoped by RLS. `sets`,
+`sessions`, `cycles`, `profile` and `feedback` *also* carry a
+`service role only` policy (`FOR ALL USING (false)`) that `webapp_schema.sql`
+doesn't declare. That combination is deliberate and safe: permissive policies OR
+together, so `SELECT` resolves to `(owner check) OR false` while
+INSERT/UPDATE/DELETE see only `false` and are denied. `bug_reports`,
+`consent_records`, `deletion_requests`, `users`, `link_tokens`, `rate_limits`,
+`allowlist` and the Strava tables have RLS **with no policy** — the API reads
+them with the service-role key, so deny-by-default costs nothing.
+
+🔴 **Exception — `program_state`, `program_updates`, `program_change_log`** each
+have a `FOR ALL ... USING (true) WITH CHECK (true)` policy granted to
+`authenticated`. Any logged-in user can read *and write* every other user's
+program data straight from PostgREST with the anon key. These come from
+`coaching_schema.sql`, not `webapp_schema.sql`, so running the webapp migration
+does not fix it. Scope them to the owner or make them service-role-only.
 
 All writes go through `webapp/api/*`, which uses the **service-role key and
 bypasses RLS** — every server query must therefore carry an explicit
