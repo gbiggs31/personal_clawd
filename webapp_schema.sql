@@ -1,5 +1,11 @@
 -- ══════════════════════════════════════════════════════════════════
 -- Avenra web app migrations — run in Supabase SQL editor
+--
+-- Safe to re-run. Postgres has no CREATE POLICY IF NOT EXISTS, so each
+-- policy below is preceded by DROP POLICY IF EXISTS. Without that, a
+-- second run aborts on the first existing policy — and because the SQL
+-- editor runs the whole script in one transaction, the abort rolls back
+-- everything after it too.
 -- ══════════════════════════════════════════════════════════════════
 
 -- 1. Mapping: Supabase Auth user ↔ Telegram user ID
@@ -12,6 +18,7 @@ CREATE TABLE IF NOT EXISTS user_auth (
 
 ALTER TABLE user_auth ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "user_auth: owner can read" ON user_auth;
 CREATE POLICY "user_auth: owner can read"
   ON user_auth FOR SELECT
   USING (auth_user_id = auth.uid());
@@ -19,6 +26,7 @@ CREATE POLICY "user_auth: owner can read"
 -- 2. RLS on sets (service role bypasses this; web app uses auth.uid() path)
 ALTER TABLE sets ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sets: owner can read" ON sets;
 CREATE POLICY "sets: owner can read"
   ON sets FOR SELECT
   USING (
@@ -30,6 +38,7 @@ CREATE POLICY "sets: owner can read"
 -- 3. RLS on sessions
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sessions: owner can read" ON sessions;
 CREATE POLICY "sessions: owner can read"
   ON sessions FOR SELECT
   USING (
@@ -41,6 +50,7 @@ CREATE POLICY "sessions: owner can read"
 -- 4. RLS on cycles
 ALTER TABLE cycles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "cycles: owner can read" ON cycles;
 CREATE POLICY "cycles: owner can read"
   ON cycles FOR SELECT
   USING (
