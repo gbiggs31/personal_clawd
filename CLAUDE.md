@@ -137,7 +137,14 @@ have a `FOR ALL ... USING (true) WITH CHECK (true)` policy granted to
 `authenticated`. Any logged-in user can read *and write* every other user's
 program data straight from PostgREST with the anon key. These come from
 `coaching_schema.sql`, not `webapp_schema.sql`, so running the webapp migration
-does not fix it. Scope them to the owner or make them service-role-only.
+does not fix it.
+
+**The fix is written and committed** — the RLS section at the end of
+`coaching_schema.sql` now drops those three policies, leaving RLS enabled with no
+policy (every reader uses the service-role key, so nothing breaks). **It has not
+been applied to the live database yet** — run that section in the SQL editor and
+use the verification query in its trailing comment. Until then, treat the
+exposure as live.
 
 All writes go through `webapp/api/*`, which uses the **service-role key and
 bypasses RLS** — every server query must therefore carry an explicit
