@@ -1,16 +1,35 @@
-import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './utils/supabase.js'
+import { AuthProvider, useAuth } from './utils/auth-context.jsx'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 import AuthCallback from './pages/AuthCallback.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import LogWorkout from './pages/LogWorkout.jsx'
 import Today from './pages/Today.jsx'
-import SessionDetail from './pages/SessionDetail.jsx'
-import Progress from './pages/Progress.jsx'
-import Admin from './pages/Admin.jsx'
 import Onboarding from './pages/Onboarding.jsx'
+
+// Split out of the initial bundle. Progress is the only page that needs
+// recharts (~400kB), Admin is reached by one account, and SessionDetail is a
+// drill-down — none of them should be on the critical path for the tabs the
+// user actually opens first.
+const loadProgress      = () => import('./pages/Progress.jsx')
+const loadAdmin         = () => import('./pages/Admin.jsx')
+const loadSessionDetail = () => import('./pages/SessionDetail.jsx')
+
+const Progress      = lazy(loadProgress)
+const Admin         = lazy(loadAdmin)
+const SessionDetail = lazy(loadSessionDetail)
+
+// Code splitting keeps the first paint small, but it would otherwise make the
+// FIRST click on Progress slower than before — a 400kB fetch at click time.
+// Warm the chunks once the app is idle so navigation stays instant.
+function prefetchRouteChunks() {
+  const warm = () => { loadProgress(); loadSessionDetail() }
+  if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 3000 })
+  else setTimeout(warm, 1500)
+}
 import ProfilePage from './pages/ProfilePage.jsx'
 import GoalsPage from './pages/GoalsPage.jsx'
 import PreferencesPage from './pages/PreferencesPage.jsx'
@@ -21,43 +40,11 @@ import LandingPage from './pages/LandingPage.jsx'
 import BugReportButton from './components/BugReportButton.jsx'
 import { hasPostHogConfig, identifyPostHog, initPostHog, resetPostHog } from './utils/posthog.js'
 
-// Requires a valid session, then checks if onboarding is complete.
-// Caches the result in sessionStorage so the profile check only happens once per session.
+// Requires a valid session, then checks that onboarding is complete.
+// Both come from AuthProvider, so after the first load these are already
+// resolved and navigation renders synchronously — no loading flash.
 function RequireAuth({ children }) {
-  const [session, setSession]       = useState(undefined)
-  const [profileOk, setProfileOk]   = useState(undefined)
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    if (!session) return
-
-    // Already checked this session — skip the API round-trip
-    if (sessionStorage.getItem('avenra-profile-ok')) {
-      setProfileOk(true)
-      return
-    }
-
-    // First load after login: check whether the user has a profile
-    session.access_token && fetch('/api/profile', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.hasProfile) {
-          sessionStorage.setItem('avenra-profile-ok', '1')
-          setProfileOk(true)
-        } else {
-          setProfileOk(false)
-        }
-      })
-      .catch(() => setProfileOk(true)) // fail open — don't block the app
-  }, [session, navigate])
+  const { session, profileOk } = useAuth()
 
   if (session === undefined || (session && profileOk === undefined)) {
     return <div className="loading-full">Loading…</div>
@@ -72,34 +59,9 @@ function RequireAuth({ children }) {
   )
 }
 
-// Root route: shows landing page for unauthenticated visitors, dashboard for logged-in users.
+// Root route: landing page for unauthenticated visitors, dashboard when logged in.
 function RootRoute() {
-  const [session, setSession]     = useState(undefined)
-  const [profileOk, setProfileOk] = useState(undefined)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    if (!session) return
-    if (sessionStorage.getItem('avenra-profile-ok')) { setProfileOk(true); return }
-    session.access_token && fetch('/api/profile', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.hasProfile) {
-          sessionStorage.setItem('avenra-profile-ok', '1')
-          setProfileOk(true)
-        } else {
-          setProfileOk(false)
-        }
-      })
-      .catch(() => setProfileOk(true))
-  }, [session])
+  const { session, profileOk } = useAuth()
 
   if (session === undefined) return <div className="loading-full">Loading…</div>
   if (!session) return <LandingPage />
@@ -132,8 +94,12 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  useEffect(() => { prefetchRouteChunks() }, [])
+
   return (
     <BrowserRouter>
+      <AuthProvider>
+      <Suspense fallback={<div className="loading-full">Loading…</div>}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
@@ -171,6 +137,8 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

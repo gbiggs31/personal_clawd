@@ -92,3 +92,104 @@ GRANT EXECUTE ON FUNCTION link_auth_account() TO authenticated;
 
 -- 6. Make sure sessions has the summary column (skip if already exists)
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary TEXT;
+
+-- ══════════════════════════════════════════════════════════════════
+-- 7. Columns the webapp writes that schema.sql never declared
+-- ══════════════════════════════════════════════════════════════════
+
+ALTER TABLE sets     ADD COLUMN IF NOT EXISTS raw_input        TEXT;
+ALTER TABLE sets     ADD COLUMN IF NOT EXISTS extraction_model TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS coaching_note    TEXT;
+
+-- ══════════════════════════════════════════════════════════════════
+-- 8. Tables the webapp queries that existed only in the live project
+--
+-- ⚠️ RECONSTRUCTED FROM APPLICATION CODE, not dumped from the database.
+-- Every statement is IF NOT EXISTS, so running this against the live
+-- project is a no-op for tables that already exist. Treat these as a
+-- fresh-install fallback — diff them against the live schema and
+-- replace this section with a real `pg_dump --schema-only` when you can.
+-- ══════════════════════════════════════════════════════════════════
+
+-- Chat/AI usage metering. Backs the 30-messages-per-hour rate limit in
+-- api/chat.js and api/lift.js — if this table is missing the limiter denies
+-- every request (it fails closed), so it must exist for AI features to work.
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id               BIGSERIAL PRIMARY KEY,
+  telegram_user_id BIGINT,
+  auth_user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role             TEXT NOT NULL,          -- 'user' | 'assistant'
+  message_length   INTEGER,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- The rate-limit query filters on exactly these three columns.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_rate_limit
+  ON chat_messages (auth_user_id, role, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS bug_reports (
+  id               BIGSERIAL PRIMARY KEY,
+  telegram_user_id BIGINT,
+  description      TEXT NOT NULL,
+  category         TEXT NOT NULL DEFAULT 'bug',   -- 'bug' | 'suggestion' | 'other'
+  page_url         TEXT,
+  status           TEXT NOT NULL DEFAULT 'open',  -- 'open' | 'resolved'
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS consent_records (
+  id                BIGSERIAL PRIMARY KEY,
+  auth_user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  privacy_accepted  BOOLEAN NOT NULL DEFAULT FALSE,
+  terms_accepted    BOOLEAN NOT NULL DEFAULT FALSE,
+  beta_acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
+  privacy_version   TEXT,
+  terms_version     TEXT,
+  accepted_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  id           BIGSERIAL PRIMARY KEY,
+  auth_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  email        TEXT,
+  status       TEXT NOT NULL DEFAULT 'pending',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- NOTE: strava_connections and strava_activities_normalized are deliberately
+-- NOT recreated here. Their real shape (encrypted token columns, the derived
+-- fatigue scores) can't be inferred safely from the read paths in
+-- lib/strava-context.js. Dump them from the live project before any fresh
+-- install. RLS is still enabled on them below if they exist.
+
+-- ══════════════════════════════════════════════════════════════════
+-- 9. Row Level Security on every remaining table
+--
+-- These tables are only ever read/written by the serverless API using the
+-- service-role key, which bypasses RLS — so enabling it changes nothing for
+-- the app. What it does change: without it, the browser-visible anon key can
+-- read every user's rows straight from PostgREST.
+--
+-- Deny-by-default: RLS with no policy blocks all anon/authenticated access.
+-- ══════════════════════════════════════════════════════════════════
+
+ALTER TABLE profile           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bug_reports       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consent_records   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deletion_requests ENABLE ROW LEVEL SECURITY;
+
+-- Guarded so the script still runs on installs without the Strava integration.
+DO $$
+BEGIN
+  IF to_regclass('public.strava_connections') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE strava_connections ENABLE ROW LEVEL SECURITY';
+  END IF;
+  IF to_regclass('public.strava_activities_normalized') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE strava_activities_normalized ENABLE ROW LEVEL SECURITY';
+  END IF;
+END $$;
+
+-- Verify afterwards: every row should show rowsecurity = true.
+--   SELECT tablename, rowsecurity FROM pg_tables
+--   WHERE schemaname = 'public' ORDER BY tablename;

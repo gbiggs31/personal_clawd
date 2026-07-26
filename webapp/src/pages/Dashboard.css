@@ -709,3 +709,24 @@
     bottom: 60px; /* above mobile tab bar */
   }
 }
+
+/* Pagination */
+.load-more-btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  border-color: rgba(141, 247, 192, 0.3);
+  color: var(--text);
+}
+
+.load-more-btn:disabled { cursor: default; opacity: 0.6; }

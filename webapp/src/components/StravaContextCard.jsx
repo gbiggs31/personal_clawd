@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../utils/supabase.js'
+import { getCached, setCached } from '../utils/page-cache.js'
 import './StravaContextCard.css'
 
 const DISMISS_KEY_PREFIX = 'avenra-strava-ctx-dismissed-'
+const CACHE_KEY = 'today:strava-status'
 
 export default function StravaContextCard() {
-  const [summary,   setSummary]   = useState(null)   // null = loading / not connected
+  // Cached: this component mounts with every visit to Today, and the summary
+  // only changes when Strava syncs (daily).
+  const [summary,   setSummary]   = useState(() => getCached(CACHE_KEY) ?? null)
   const [dismissed, setDismissed] = useState(false)
 
   const today = new Date().toISOString().slice(0, 10)
@@ -16,6 +20,7 @@ export default function StravaContextCard() {
       setDismissed(true)
       return
     }
+    if (getCached(CACHE_KEY) !== undefined) return
 
     async function load() {
       try {
@@ -27,9 +32,11 @@ export default function StravaContextCard() {
         })
         if (!res.ok) return
         const data = await res.json()
-        if (data.connected && data.context_summary) {
-          setSummary(data.context_summary)
-        }
+        const next = (data.connected && data.context_summary) ? data.context_summary : null
+        setSummary(next)
+        // Cache the "not connected" answer too — otherwise users without
+        // Strava re-request it on every single visit.
+        setCached(CACHE_KEY, next, 30 * 60 * 1000)
       } catch {
         // Non-fatal — Today page works fine without this
       }

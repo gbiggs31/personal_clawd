@@ -19,15 +19,18 @@ const BACKFILL_DAYS    = 30
 export default async function handler(req, res) {
   const action = req.query.action
 
-  // Cron path — method POST with x-cron-secret header, no action required
-  if (req.method === 'POST' && !action) {
+  // Cron path — no action query param.
+  // Vercel Cron invokes with GET and `Authorization: Bearer $CRON_SECRET`;
+  // the x-cron-secret header is kept for manual/self-hosted triggers.
+  if (!action) {
     if (!process.env.CRON_SECRET) {
       console.error('[strava/cron] CRON_SECRET env var not set')
       return res.status(500).json({ error: 'Cron not configured' })
     }
-    if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const bearer = req.headers.authorization?.replace('Bearer ', '')
+    const authorised = bearer === process.env.CRON_SECRET
+                    || req.headers['x-cron-secret'] === process.env.CRON_SECRET
+    if (!authorised) return res.status(401).json({ error: 'Unauthorized' })
     return runCronSync(res)
   }
 

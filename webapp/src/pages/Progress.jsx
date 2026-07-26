@@ -9,15 +9,20 @@ import {
   normalizeExercise, displayExercise, getTopSet,
   buildExerciseHistory, compareTopSets, formatWeightRep,
 } from '../utils/training.js'
+import { useUnits, unitLabel, toDisplayWeight } from '../utils/units.js'
+import { getCached, setCached, CACHE_KEYS } from '../utils/page-cache.js'
 import './Progress.css'
 
 // ── Metric definitions ────────────────────────────────────────────────────────
+//
+// getValue always returns kilograms for `kind: 'weight'` metrics; conversion to
+// the user's display unit happens once, when the chart data is built.
 
 const METRICS = [
   {
     key: 'top_weight',
     label: 'Top weight',
-    unit: 'kg',
+    kind: 'weight',
     getValue(sets) {
       return getTopSet(sets)?.weight_kg ?? null
     },
@@ -25,7 +30,7 @@ const METRICS = [
   {
     key: 's1_weight',
     label: 'Set 1 weight',
-    unit: 'kg',
+    kind: 'weight',
     getValue(sets) {
       const s = [...sets].sort((a, b) => (a.set_num ?? 99) - (b.set_num ?? 99))[0]
       return s?.weight_kg ?? null
@@ -34,7 +39,7 @@ const METRICS = [
   {
     key: 'top_reps',
     label: 'Top reps',
-    unit: 'reps',
+    kind: 'reps',
     getValue(sets) {
       const max = Math.max(...sets.map(s => s.reps ?? 0))
       return max > 0 ? max : null
@@ -43,7 +48,7 @@ const METRICS = [
   {
     key: 's1_reps',
     label: 'Set 1 reps',
-    unit: 'reps',
+    kind: 'reps',
     getValue(sets) {
       const s = [...sets].sort((a, b) => (a.set_num ?? 99) - (b.set_num ?? 99))[0]
       return s?.reps ?? null
@@ -52,7 +57,7 @@ const METRICS = [
   {
     key: 'volume',
     label: 'Volume',
-    unit: 'kg',
+    kind: 'weight',
     getValue(sets) {
       const v = sets.reduce((sum, s) => sum + (s.weight_kg || 0) * (s.reps || 0), 0)
       return v > 0 ? Math.round(v) : null
@@ -61,7 +66,7 @@ const METRICS = [
   {
     key: 'est_1rm',
     label: 'Est. 1RM',
-    unit: 'kg',
+    kind: 'weight',
     getValue(sets) {
       const s = getTopSet(sets)
       if (!s?.weight_kg || !s?.reps) return null
@@ -187,10 +192,10 @@ function DeltaBadge({ delta }) {
   )
 }
 
-function SetLine({ set }) {
+function SetLine({ set, units }) {
   return (
     <div className="rs-set">
-      <span className="rs-set-main">{formatWeightRep(set) || '—'}</span>
+      <span className="rs-set-main">{formatWeightRep(set, units) || '—'}</span>
       {set.rpe != null && <span className="rs-badge">RPE {set.rpe}</span>}
       {set.rir != null && <span className="rs-badge">RIR {set.rir}</span>}
       {set.injury_flag && <span className="rs-badge injury">⚠ {set.injury_body_part || 'injury'}</span>}
@@ -199,7 +204,7 @@ function SetLine({ set }) {
   )
 }
 
-function RecentSessionCard({ sess, delta, expanded, onToggle, onOpen }) {
+function RecentSessionCard({ sess, delta, expanded, onToggle, onOpen, units }) {
   const meta = sess.meta
   const header = [
     fmtLong(sess.date),
@@ -215,7 +220,7 @@ function RecentSessionCard({ sess, delta, expanded, onToggle, onOpen }) {
         <DeltaBadge delta={delta} />
       </div>
       <div className="rs-sets">
-        {sess.sets.map(s => <SetLine key={s.id ?? `${s.set_num}-${s.weight_kg}-${s.reps}`} set={s} />)}
+        {sess.sets.map(s => <SetLine key={s.id ?? `${s.set_num}-${s.weight_kg}-${s.reps}`} set={s} units={units} />)}
       </div>
       {coaching && (
         <div className="rs-coaching">
@@ -235,10 +240,19 @@ const RECENT_DEFAULT = 5
 
 export default function Progress() {
   const navigate = useNavigate()
-  const [exercises, setExercises]   = useState([])
+  const units = useUnits()
+  // This list comes from scanning every set the user has logged, so it is the
+  // most expensive thing on the page. Seed from cache; refresh in background.
+  const exSeed = getCached(CACHE_KEYS.progressExercises)
+
+  const [exercises, setExercises]   = useState(() => exSeed?.exercises ?? [])
+  // normalized name → the raw `exercise` strings that normalise to it. Needed
+  // because the stored values may differ in case or spacing from the
+  // normalised key we show in the picker.
+  const [rawNames, setRawNames]     = useState(() => exSeed?.rawNames ?? {})
   const [selectedEx, setSelectedEx] = useState('')
   const [exSets, setExSets]         = useState([])
-  const [loadingInit, setLoadingInit] = useState(true)
+  const [loadingInit, setLoadingInit] = useState(() => !exSeed)
   const [loadingEx, setLoadingEx]   = useState(false)
   const [metricKey, setMetricKey]   = useState('top_weight')
   const [rangeKey, setRangeKey]     = useState('90d')
@@ -246,38 +260,53 @@ export default function Progress() {
   const [showAllRecent, setShowAllRecent] = useState(false)
   const [expandedRecent, setExpandedRecent] = useState(() => new Set())
 
-  // Load distinct exercise names once
+  // Load distinct exercise names once, keeping the raw spellings alongside
   useEffect(() => {
     supabase.from('sets').select('exercise').then(({ data }) => {
       if (data) {
-        const seen = new Set()
-        const list = []
+        const byNorm = {}
         for (const row of data) {
           const norm = normalizeExercise(row.exercise)
-          if (norm && !seen.has(norm)) { seen.add(norm); list.push(norm) }
+          if (!norm) continue
+          if (!byNorm[norm]) byNorm[norm] = new Set()
+          byNorm[norm].add(row.exercise)
         }
-        setExercises(list.sort())
+        const nextRawNames = Object.fromEntries(
+          Object.entries(byNorm).map(([k, v]) => [k, [...v]])
+        )
+        const nextExercises = Object.keys(byNorm).sort()
+        setRawNames(nextRawNames)
+        setExercises(nextExercises)
+        setCached(CACHE_KEYS.progressExercises, {
+          exercises: nextExercises,
+          rawNames: nextRawNames,
+        })
       }
       setLoadingInit(false)
     })
   }, [])
 
-  // Load sets when exercise changes
+  // Load sets when exercise changes.
+  // Matching on the exact raw strings rather than `ilike(normalizedName)`:
+  // ilike would miss a stored "bench  press" (double space) and would treat
+  // any % or _ in an exercise name as a wildcard.
   useEffect(() => {
     setShowAllRecent(false)
     setExpandedRecent(new Set())
     if (!selectedEx) { setExSets([]); return }
+
+    const variants = rawNames[selectedEx] || [selectedEx]
     setLoadingEx(true)
     supabase
       .from('sets')
       .select('*')
-      .ilike('exercise', selectedEx)
+      .in('exercise', variants)
       .order('date')
       .then(({ data }) => {
         setExSets(data || [])
         setLoadingEx(false)
       })
-  }, [selectedEx])
+  }, [selectedEx, rawNames])
 
   // Load session metadata (type, summary, notes) for the loaded sets' sessions
   useEffect(() => {
@@ -303,6 +332,7 @@ export default function Progress() {
 
   const metric = METRICS.find(m => m.key === metricKey) ?? METRICS[0]
   const range  = RANGES.find(r => r.key === rangeKey)   ?? RANGES[1]
+  const metricUnit = metric.kind === 'weight' ? unitLabel(units) : 'reps'
 
   // Build chart data: group by session, apply range, compute metric
   const chartData = useMemo(() => {
@@ -322,11 +352,14 @@ export default function Progress() {
     return Object.values(sessions)
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(({ date, sets }) => {
-        const value = metric.getValue(sets)
-        return value != null ? { date, value, sets } : null
+        const raw = metric.getValue(sets)
+        if (raw == null) return null
+        // Weight metrics come back in kg — convert once, here.
+        const value = metric.kind === 'weight' ? toDisplayWeight(raw, units) : raw
+        return { date, value, sets }
       })
       .filter(Boolean)
-  }, [exSets, metric, range])
+  }, [exSets, metric, range, units])
 
   // Summary strip
   const summary = useMemo(() => {
@@ -415,16 +448,16 @@ export default function Progress() {
                       <div className="prog-stat-label">Sessions</div>
                     </div>
                     <div className="prog-stat">
-                      <div className="prog-stat-value">{summary.best}<span className="prog-stat-unit"> {metric.unit}</span></div>
+                      <div className="prog-stat-value">{summary.best}<span className="prog-stat-unit"> {metricUnit}</span></div>
                       <div className="prog-stat-label">Best</div>
                     </div>
                     <div className="prog-stat">
-                      <div className="prog-stat-value">{summary.last}<span className="prog-stat-unit"> {metric.unit}</span></div>
+                      <div className="prog-stat-value">{summary.last}<span className="prog-stat-unit"> {metricUnit}</span></div>
                       <div className="prog-stat-label">Latest</div>
                     </div>
                     <div className={`prog-stat ${summary.diff > 0 ? 'up' : summary.diff < 0 ? 'down' : ''}`}>
                       <div className="prog-stat-value">
-                        {summary.diff > 0 ? '+' : ''}{summary.diff}<span className="prog-stat-unit"> {metric.unit}</span>
+                        {summary.diff > 0 ? '+' : ''}{summary.diff}<span className="prog-stat-unit"> {metricUnit}</span>
                       </div>
                       <div className="prog-stat-label">Change</div>
                     </div>
@@ -452,7 +485,7 @@ export default function Progress() {
                         domain={['auto', 'auto']}
                       />
                       <Tooltip
-                        content={props => <ChartTooltip {...props} unit={metric.unit} />}
+                        content={props => <ChartTooltip {...props} unit={metricUnit} />}
                         cursor={{ stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1 }}
                       />
                       <Line
@@ -478,10 +511,11 @@ export default function Progress() {
                   <RecentSessionCard
                     key={sess.session_id}
                     sess={sess}
-                    delta={compareTopSets(sess.topSet, recentSessions[i + 1]?.topSet)}
+                    delta={compareTopSets(sess.topSet, recentSessions[i + 1]?.topSet, units)}
                     expanded={expandedRecent.has(sess.session_id)}
                     onToggle={() => toggleRecent(sess.session_id)}
                     onOpen={() => navigate(`/session/${sess.session_id}`)}
+                    units={units}
                   />
                 ))}
                 {recentSessions.length > RECENT_DEFAULT && (

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { supabase } from '../utils/supabase.js'
+import { invalidateCache } from '../utils/page-cache.js'
 import SupportCTA from '../components/SupportCTA.jsx'
 import './LogWorkout.css'
 
@@ -11,6 +12,9 @@ const PLAN_KEY         = 'avenra-active-plan'
 const FEED_KEY         = 'avenra-feed'
 const DRAFT_KEY        = 'avenra-log-draft'
 const FEED_EXPIRY_MINS = 120
+
+// Feed item types whose content arrives incrementally over SSE.
+const STREAMING_TYPES = new Set(['chat-assistant', 'lift-advice'])
 
 function loadSession() {
   try { const r = localStorage.getItem(SESSION_KEY); return r ? JSON.parse(r) : null } catch { return null }
@@ -44,10 +48,61 @@ function elapsed(startedAt) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
-// Case-insensitive fuzzy match between two exercise names
+const tokenize = name => (name || '').toLowerCase().match(/[a-z0-9]+/g) || []
+
+/**
+ * Do two exercise names refer to the same movement?
+ *
+ * Whole-token containment, not raw substring: plain `includes` made "Row"
+ * match "Barbell Row", "Upright Row" and "Cable Row" at once, so a single
+ * logged set counted against three planned exercises.
+ */
 function exerciseMatch(a, b) {
-  const la = a.toLowerCase(), lb = b.toLowerCase()
-  return la === lb || la.includes(lb) || lb.includes(la)
+  const ta = tokenize(a), tb = tokenize(b)
+  if (!ta.length || !tb.length) return false
+  if (ta.join(' ') === tb.join(' ')) return true
+
+  // One name's tokens must be a complete subset of the other's — "bench press"
+  // matches "incline bench press", but "row" no longer matches "barbell row".
+  const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+  if (shorter.length < 2) return false
+  const longerSet = new Set(longer)
+  return shorter.every(t => longerSet.has(t))
+}
+
+/**
+ * Read an SSE stream of `{ text }` deltas from one of the AI endpoints.
+ * Invokes onText with the accumulated response so far on every delta, and
+ * resolves with the final text.
+ */
+async function consumeTextStream(res, onText) {
+  const reader  = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = '', full = '', finished = false
+
+  while (!finished) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const payload = line.slice(6).trim()
+      if (payload === '[DONE]') { finished = true; break }
+      try {
+        const parsed = JSON.parse(payload)
+        if (parsed.error) throw new Error(parsed.error)
+        if (parsed.text) { full += parsed.text; onText(full) }
+      } catch (parseErr) {
+        if (parseErr.message !== 'Unexpected end of JSON input') throw parseErr
+      }
+    }
+  }
+
+  return full
 }
 
 // ── Feed items ────────────────────────────────────────────────────────────────
@@ -91,9 +146,111 @@ function ChatAssistantItem({ text, isStreaming }) {
   )
 }
 
-function ResponseItem({ msg, isStreaming }) {
+// ── /lift items ───────────────────────────────────────────────────────────────
+
+function liftWeight(kg, units) {
+  if (kg == null) return 'BW'
+  return units === 'imperial' ? `${Math.round(kg * 2.20462)}lbs` : `${kg}kg`
+}
+
+function liftShortDate(dateStr) {
+  if (!dateStr) return ''
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+// "100kg × 5,5,5" when the load held across sets, otherwise each set spelled out.
+function liftSetSummary(sets, units) {
+  if (!sets?.length) return '—'
+  const weights = [...new Set(sets.map(s => s.weightKg))]
+  if (weights.length === 1) {
+    return `${liftWeight(weights[0], units)} × ${sets.map(s => s.reps ?? '?').join(',')}`
+  }
+  return sets.map(s => `${liftWeight(s.weightKg, units)}×${s.reps ?? '?'}`).join(', ')
+}
+
+function LiftCardItem({ data }) {
+  const { exercise, units, sessions, stats, suggestion } = data
+
+  const deltaText = stats.delta30 != null && stats.delta30 !== 0
+    ? `${stats.delta30 > 0 ? '↑ +' : '↓ '}${liftWeight(Math.abs(stats.delta30), units)} / 30d`
+    : stats.delta30 === 0 ? '= flat / 30d' : null
+
+  return (
+    <div className="lift-card">
+      <div className="lift-card-head">
+        <span className="lift-card-title">{exercise}</span>
+        <span className="lift-card-count">
+          {stats.totalSessions} session{stats.totalSessions === 1 ? '' : 's'}
+          {stats.daysSince != null && ` · ${stats.daysSince === 0 ? 'today' : `${stats.daysSince}d ago`}`}
+        </span>
+      </div>
+
+      <div className="lift-rows">
+        {sessions.map(s => (
+          <div key={s.sessionId} className="lift-row">
+            <span className="lift-row-date">{liftShortDate(s.date)}</span>
+            <span className="lift-row-sets">{liftSetSummary(s.sets, units)}</span>
+            <span className="lift-row-rpe">{s.avgRpe != null ? `RPE ${s.avgRpe}` : ''}</span>
+            {s.sets.some(x => x.injuryFlag) && <span className="lift-row-injury">⚠</span>}
+          </div>
+        ))}
+      </div>
+
+      <div className="lift-card-foot">
+        {stats.pr && (
+          <span className="lift-stat">
+            <span className="lift-stat-label">est 1RM</span> {liftWeight(stats.pr.est1rm, units)}
+          </span>
+        )}
+        {deltaText && (
+          <span className={`lift-delta ${stats.trend || 'flat'}`}>{deltaText}</span>
+        )}
+      </div>
+
+      {suggestion && (
+        <div className="lift-suggestion">
+          <span className="lift-suggestion-label">Suggested</span>
+          {liftWeight(suggestion.weightKg, units)} × {suggestion.reps} × {suggestion.sets} sets
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LiftAmbiguousItem({ data, onLiftSelect }) {
+  return (
+    <div className="feed-response clarification">
+      <span className="feed-label">Which one?</span>
+      <div className="lift-candidates">
+        {data.candidates.map(name => (
+          <button key={name} className="lift-candidate" onClick={() => onLiftSelect?.(name)}>
+            {name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function LiftAdviceItem({ text, isStreaming }) {
+  return (
+    <div className="lift-advice">
+      <span className="lift-advice-icon">✦</span>
+      <div className="lift-advice-body">
+        {text
+          ? <div className="feed-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown></div>
+          : isStreaming ? <TypingDots /> : null}
+      </div>
+    </div>
+  )
+}
+
+function ResponseItem({ msg, isStreaming, onLiftSelect }) {
   if (msg.type === 'chat-user')      return <ChatUserItem text={msg.content} />
   if (msg.type === 'chat-assistant') return <ChatAssistantItem text={msg.content} isStreaming={isStreaming} />
+  if (msg.type === 'lift-card')      return <LiftCardItem data={msg.data} />
+  if (msg.type === 'lift-ambiguous') return <LiftAmbiguousItem data={msg.data} onLiftSelect={onLiftSelect} />
+  if (msg.type === 'lift-advice')    return <LiftAdviceItem text={msg.content} isStreaming={isStreaming} />
 
   if (msg.type === 'error') {
     return <div className="feed-response error">{msg.content}</div>
@@ -241,9 +398,10 @@ const LOG_EXAMPLES = [
 ]
 
 const LOG_COMMANDS = [
-  { cmd: '/done',  label: 'Finish session', hint: 'Closes & generates summary', send: true  },
-  { cmd: '/done ', label: '/done [note]',   hint: 'Add a session note',          send: false },
-  { cmd: '/stats', label: 'Stats',          hint: '90-day training summary',     send: true  },
+  { cmd: '/lift ', label: '/lift [exercise]', hint: 'History + what to lift today', send: false },
+  { cmd: '/done',  label: 'Finish session',   hint: 'Closes & generates summary',   send: true  },
+  { cmd: '/done ', label: '/done [note]',     hint: 'Add a session note',           send: false },
+  { cmd: '/stats', label: 'Stats',            hint: '90-day training summary',      send: true  },
 ]
 
 function LogEmptyState({ onExample, onSend }) {
@@ -280,8 +438,8 @@ function LogEmptyState({ onExample, onSend }) {
 
 function ChatEmptyState({ onSuggestion }) {
   const suggestions = [
+    '/lift bench press',
     'How has my training been lately?',
-    "What's my progress on bench press?",
     'Any injury patterns I should watch?',
     'Am I due for a deload?',
   ]
@@ -289,7 +447,9 @@ function ChatEmptyState({ onSuggestion }) {
     <div className="log-empty">
       <div className="log-empty-icon">✦</div>
       <h2 className="log-empty-title">Ask about your training</h2>
-      <p className="log-empty-sub">I have access to your full workout history.</p>
+      <p className="log-empty-sub">
+        I have access to your full workout history. Try <code>/lift [exercise]</code> before a set.
+      </p>
       <div className="log-examples">
         {suggestions.map(s => (
           <button key={s} className="log-example suggestion" onClick={() => onSuggestion(s)}>{s}</button>
@@ -365,10 +525,12 @@ export default function LogWorkout() {
     }
   }, [actionsOpen])
 
+  // Debounced: `feed` changes on every streamed token, and persistFeed
+  // JSON-stringifies the whole feed synchronously on the main thread.
   useEffect(() => {
-    if (feed.length > 0 || chatHistory.length > 0) {
-      persistFeed(feed, chatHistory)
-    }
+    if (feed.length === 0 && chatHistory.length === 0) return
+    const t = setTimeout(() => persistFeed(feed, chatHistory), 500)
+    return () => clearTimeout(t)
   }, [feed, chatHistory])
 
   function updateChatHistory(msgs) {
@@ -479,6 +641,10 @@ export default function LogWorkout() {
       }
     }
 
+    // New sets change what the other tabs should show.
+    invalidateCache('progress')
+    invalidateCache('today')
+
     addFeed({ type: 'success', content: data.reply })
   }
 
@@ -497,6 +663,11 @@ export default function LogWorkout() {
 
     clearSession(); clearActivePlan()
     setSession(null); setActivePlan(null); setPending(null)
+
+    // A closed session appears in History and shifts every rollup — drop all
+    // cached tab data so the next visit re-reads.
+    invalidateCache()
+
     const today = new Date().toISOString().split('T')[0]
     const dateLabel = data.sessionDate && data.sessionDate !== today
       ? ` · ${new Date(data.sessionDate + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
@@ -555,40 +726,80 @@ export default function LogWorkout() {
       throw new Error(err.error || `Request failed (${res.status})`)
     }
 
-    const reader  = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = '', fullResponse = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop()
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') break
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.error) throw new Error(parsed.error)
-          if (parsed.text) {
-            fullResponse += parsed.text
-            setFeed(prev => {
-              const updated = [...prev]
-              updated[updated.length - 1] = { type: 'chat-assistant', content: fullResponse }
-              return updated
-            })
-          }
-        } catch (parseErr) {
-          if (parseErr.message !== 'Unexpected end of JSON input') throw parseErr
-        }
-      }
-    }
+    const fullResponse = await consumeTextStream(res, text => {
+      setFeed(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1] = { type: 'chat-assistant', content: text }
+        return updated
+      })
+    })
 
     updateChatHistory([...chatHistoryRef.current, { role: 'assistant', content: fullResponse }])
+  }
+
+  // ── /lift handler ───────────────────────────────────────────────────────────
+
+  // Stage 1 paints the history card from a plain JSON read (no model), stage 2
+  // streams the coaching on top of it. Works from either mode.
+  async function handleLift(query, { exact = false } = {}) {
+    const token = await getToken()
+
+    const res = await fetch('/api/lift', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ query, exact }),
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      addFeed({ type: 'error', content: data.error || 'Could not look that up.' })
+      return
+    }
+    if (data.ambiguous) {
+      addFeed({ type: 'lift-ambiguous', data: { query: data.query, candidates: data.candidates } })
+      return
+    }
+    if (!data.ok) {
+      addFeed({ type: 'error', content: data.message || 'No history for that exercise.' })
+      return
+    }
+
+    addFeed([
+      { type: 'lift-card',   data },
+      { type: 'lift-advice', content: '' },
+    ])
+
+    // Advice is best-effort: the card and the rule-based suggestion already
+    // stand on their own if the model call fails.
+    try {
+      const adviceRes = await fetch('/api/lift?stage=advice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ exercise: data.exercise }),
+      })
+
+      if (!adviceRes.ok) {
+        const err = await adviceRes.json().catch(() => ({}))
+        throw new Error(err.error || `Request failed (${adviceRes.status})`)
+      }
+
+      await consumeTextStream(adviceRes, text => {
+        setFeed(prev => {
+          const updated = [...prev]
+          updated[updated.length - 1] = { type: 'lift-advice', content: text }
+          return updated
+        })
+      })
+    } catch (err) {
+      setFeed(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1] = {
+          type: 'lift-advice',
+          content: `_Coaching unavailable (${err.message}). The suggested load above is from your logged progression._`,
+        }
+        return updated
+      })
+    }
   }
 
   // ── Send dispatcher ─────────────────────────────────────────────────────────
@@ -602,12 +813,24 @@ export default function LogWorkout() {
     requestAnimationFrame(resizeTextarea)
     setLoading(true)
 
+    const lower  = trimmed.toLowerCase()
+    // /lift only reads history — it's useful from either mode, so it's
+    // intercepted before the log/chat split.
+    const isLift = lower === '/lift' || lower.startsWith('/lift ')
+
     try {
-      if (mode === 'chat') {
+      if (isLift) {
+        addFeed({ type: 'command', content: trimmed })
+        const query = trimmed.slice(5).trim()
+        if (!query) {
+          addFeed({ type: 'error', content: 'Usage: /lift <exercise> — e.g. /lift bench press' })
+        } else {
+          await handleLift(query)
+        }
+      } else if (mode === 'chat') {
         await handleChat(trimmed)
       } else {
         addFeed({ type: 'command', content: trimmed })
-        const lower = trimmed.toLowerCase()
         if (lower === '/done' || lower.startsWith('/done ')) {
           await handleDone(trimmed.slice(5).trim() || undefined)
         } else if (lower === '/stats') {
@@ -617,9 +840,23 @@ export default function LogWorkout() {
         }
       }
     } catch (err) {
-      if (mode === 'log') addFeed({ type: 'error', content: err.message || 'Something went wrong.' })
+      if (mode === 'log' || isLift) addFeed({ type: 'error', content: err.message || 'Something went wrong.' })
     }
 
+    setLoading(false)
+    textareaRef.current?.focus()
+  }
+
+  // Chip click from a /lift disambiguation prompt — the name is already exact.
+  async function selectLiftCandidate(name) {
+    if (loading) return
+    setLoading(true)
+    addFeed({ type: 'command', content: `/lift ${name}` })
+    try {
+      await handleLift(name, { exact: true })
+    } catch (err) {
+      addFeed({ type: 'error', content: err.message || 'Something went wrong.' })
+    }
     setLoading(false)
     textareaRef.current?.focus()
   }
@@ -655,6 +892,9 @@ export default function LogWorkout() {
   }
 
   const isEmpty = feed.length === 0
+  // While a response streams into the last feed row, that row shows its own
+  // typing indicator — don't also render the log-mode one underneath it.
+  const isStreamingLast = STREAMING_TYPES.has(feed[feed.length - 1]?.type)
 
   const placeholder = mode === 'chat'
     ? 'Ask about your training…'
@@ -665,8 +905,8 @@ export default function LogWorkout() {
     : 'bench press 3x5 @ 100kg'
 
   const hint = mode === 'chat'
-    ? 'Enter to send · Shift+Enter for new line'
-    : 'Enter to send · /done to finish · /stats for summary'
+    ? 'Enter to send · /lift [exercise] for history + advice'
+    : 'Enter to send · /lift [exercise] · /done to finish · /stats'
 
   return (
     <div className="log-page">
@@ -695,10 +935,11 @@ export default function LogWorkout() {
               : <ResponseItem
                   key={i}
                   msg={item}
-                  isStreaming={loading && i === feed.length - 1 && item.type === 'chat-assistant'}
+                  isStreaming={loading && i === feed.length - 1 && STREAMING_TYPES.has(item.type)}
+                  onLiftSelect={selectLiftCandidate}
                 />
           )}
-          {loading && mode === 'log' && (
+          {loading && mode === 'log' && !isStreamingLast && (
             <div className="feed-response info">
               <TypingDots />
             </div>
@@ -780,6 +1021,15 @@ export default function LogWorkout() {
                       textareaRef.current?.focus()
                     }}>
                       ✎ Add session note
+                    </button>
+                    <button className="log-action-item" onClick={() => {
+                      setActionsOpen(false)
+                      setInput('/lift ')
+                      sessionStorage.setItem(DRAFT_KEY, '/lift ')
+                      setTimeout(resizeTextarea, 0)
+                      textareaRef.current?.focus()
+                    }}>
+                      ⚡ Lift lookup
                     </button>
                     <button className="log-action-item" onClick={() => {
                       setActionsOpen(false)

@@ -7,7 +7,11 @@
 import { authenticateUser } from '../lib/auth.js'
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  // SessionDetail sends update-session as PATCH; consent and request-deletion
+  // are POSTs. Both verbs are accepted here.
+  if (req.method !== 'POST' && req.method !== 'PATCH') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
 
   const auth = await authenticateUser(req, { requireLink: false })
   if (auth.error) return res.status(auth.status).json({ error: auth.error })

@@ -1,5 +1,12 @@
 import { authenticateUser } from '../lib/auth.js'
 
+// Underscore-prefixed keys are internal server state stored in the same KV
+// table (plan cache, rate-limit stamps). They must never be returned to the
+// client, and must not count towards `hasProfile` — otherwise merely hitting
+// /api/today-plan would make an un-onboarded user look onboarded and skip
+// the onboarding flow.
+const isInternalKey = key => typeof key === 'string' && key.startsWith('_')
+
 export default async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -20,7 +27,7 @@ export default async function handler(req, res) {
 
     const profile = {}
     for (const row of data || []) {
-      if (row.key) profile[row.key] = row.value
+      if (row.key && !isInternalKey(row.key)) profile[row.key] = row.value
     }
 
     return res.status(200).json({ profile, hasProfile: Object.keys(profile).length > 0 })
@@ -34,6 +41,7 @@ export default async function handler(req, res) {
     }
 
     const rows = Object.entries(fields)
+      .filter(([k]) => !isInternalKey(k))   // clients cannot write internal keys
       .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
       .map(([key, value]) => ({
         telegram_user_id: uid,

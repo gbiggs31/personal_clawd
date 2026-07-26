@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import { buildExerciseHistory, compareTopSets, normalizeExercise } from '../utils/training.js'
+import { getCached, setCached, CACHE_KEYS } from '../utils/page-cache.js'
 import StravaContextCard from '../components/StravaContextCard.jsx'
 import './Today.css'
 
@@ -188,7 +189,7 @@ function LastTime({ sessions, units }) {
   const recent = sessions.slice(0, 3)
   const top = recent[0].topSet
   if (!top) return null
-  const delta = compareTopSets(recent[0].topSet, recent[1]?.topSet)
+  const delta = compareTopSets(recent[0].topSet, recent[1]?.topSet, units)
 
   return (
     <div className="today-lasttime">
@@ -205,7 +206,7 @@ function LastTime({ sessions, units }) {
             {delta.direction === 'up' && '↑'}
             {delta.direction === 'down' && '↓'}
             {delta.direction === 'flat' && '='}
-            {units !== 'imperial' ? ` ${delta.text}` : ''}
+            {` ${delta.text}`}
           </span>
         )}
         {sessions.length > 1 && <span className="tlt-chev">{open ? '▾' : '▸'}</span>}
@@ -287,9 +288,11 @@ function TodaySessionCard({ plan, loading, onRefresh, history }) {
 
 export default function Today() {
   const navigate = useNavigate()
-  const [sessionPlan, setSessionPlan]   = useState(null)
+  // Seeded from cache so revisiting the tab shows the plan instantly instead of
+  // flashing "Generating today's plan…" while a round trip resolves.
+  const [sessionPlan, setSessionPlan]   = useState(() => getCached(CACHE_KEYS.todayPlan) ?? null)
   const [planLoading, setPlanLoading]   = useState(false)
-  const [exHistory, setExHistory]       = useState({})   // normEx → recent sessions
+  const [exHistory, setExHistory]       = useState(() => getCached(CACHE_KEYS.todayHistory) ?? {})
   const [showModify,  setShowModify]    = useState(false)
   const [showSuggest, setShowSuggest]   = useState(false)
   const [modifyText,  setModifyText]    = useState('')
@@ -303,17 +306,22 @@ export default function Today() {
   const [quizAnswers, setQuizAnswers]   = useState({})
   const [quizLoading, setQuizLoading]   = useState(false)
 
-  async function loadPlan() {
-    setPlanLoading(true)
+  // The server caches today's plan per calendar day; `refresh` is what the ↻
+  // button sends to force a regeneration.
+  async function loadPlan({ refresh = false } = {}) {
+    // Only show the skeleton when there's nothing to show yet — a background
+    // revalidation shouldn't blank out a plan already on screen.
+    if (refresh || !sessionPlan) setPlanLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) { setPlanLoading(false); return }
-      const res = await fetch('/api/today-plan', {
+      const res = await fetch(`/api/today-plan${refresh ? '?refresh=1' : ''}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
       if (!res.ok) throw new Error(await res.text())
       const plan = await res.json()
       setSessionPlan(plan)
+      setCached(CACHE_KEYS.todayPlan, plan)
     } catch (err) {
       console.error('Today plan:', err)
     } finally {
@@ -330,7 +338,9 @@ export default function Today() {
         .select('exercise, weight_kg, reps, rpe, rir, set_num, date, session_id, note, injury_flag, injury_body_part')
         .gte('date', cutoff)
         .order('date')
-      setExHistory(buildExerciseHistory(data || []))
+      const history = buildExerciseHistory(data || [])
+      setExHistory(history)
+      setCached(CACHE_KEYS.todayHistory, history)
     } catch { /* non-fatal — hints just won't show */ }
   }
 
@@ -514,7 +524,7 @@ export default function Today() {
       <TodaySessionCard
         plan={sessionPlan}
         loading={planLoading}
-        onRefresh={() => loadPlan()}
+        onRefresh={() => loadPlan({ refresh: true })}
         history={exHistory}
       />
 

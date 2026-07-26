@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+import { useUnits, formatWeight, unitLabel, toDisplayWeight, fromDisplayWeight } from '../utils/units.js'
 import './SessionDetail.css'
 
 function formatDate(dateStr) {
@@ -24,7 +25,7 @@ function getTopSet(sets) {
   })[0]
 }
 
-function compareSet(current, previous) {
+function compareSet(current, previous, units = 'metric') {
   if (!current || !previous) return null
 
   const cw = current.weight_kg ?? 0
@@ -32,17 +33,17 @@ function compareSet(current, previous) {
   const cr = current.reps ?? 0
   const pr = previous.reps ?? 0
 
-  if (cw > pw) return { direction: 'up', text: `+${cw - pw}kg` }
-  if (cw < pw) return { direction: 'down', text: `${cw - pw}kg` }
+  const asWeight = kg => formatWeight(Math.abs(kg), units)
+  if (cw > pw) return { direction: 'up', text: `+${asWeight(cw - pw)}` }
+  if (cw < pw) return { direction: 'down', text: `-${asWeight(cw - pw)}` }
   if (cr > pr) return { direction: 'up', text: `+${cr - pr} rep${cr - pr === 1 ? '' : 's'}` }
   if (cr < pr) return { direction: 'down', text: `${cr - pr} rep${pr - cr === 1 ? '' : 's'}` }
   return { direction: 'flat', text: 'same' }
 }
 
-function formatWeightRep(set) {
-  const weight = set?.weight_kg != null ? `${set.weight_kg}kg` : 'BW'
+function formatWeightRep(set, units) {
   const reps = set?.reps != null ? `x ${set.reps}` : ''
-  return `${weight} ${reps}`.trim()
+  return `${formatWeight(set?.weight_kg, units)} ${reps}`.trim()
 }
 
 function EditIcon() {
@@ -61,7 +62,7 @@ function TrashIcon() {
   )
 }
 
-function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
+function SetRow({ set, previousSet, onUpdate, onDelete, onError, units }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -69,7 +70,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
 
   function startEdit() {
     setForm({
-      weight_kg: set.weight_kg ?? '',
+      weight_kg: toDisplayWeight(set.weight_kg, units) ?? '',
       reps: set.reps ?? '',
       rpe: set.rpe ?? '',
       rir: set.rir ?? '',
@@ -93,7 +94,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
   async function save() {
     setSaving(true)
     const updates = {
-      weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
+      weight_kg: fromDisplayWeight(form.weight_kg, units),
       reps: form.reps !== '' ? parseInt(form.reps, 10) : null,
       rpe: form.rpe !== '' ? parseFloat(form.rpe) : null,
       rir: form.rir !== '' ? parseInt(form.rir, 10) : null,
@@ -129,7 +130,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
   const rpe = set.rpe != null ? `RPE ${set.rpe}` : null
   const rir = set.rir != null ? `RIR ${set.rir}` : null
   const injury = set.injury_flag
-  const delta = compareSet(set, previousSet)
+  const delta = compareSet(set, previousSet, units)
 
   if (editing) {
     return (
@@ -138,7 +139,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
 
         <div className="edit-grid">
           <label className="edit-field">
-            <span>Weight (kg)</span>
+            <span>Weight ({unitLabel(units)})</span>
             <input type="number" step="0.5" value={form.weight_kg} onChange={field('weight_kg')} placeholder="BW" />
           </label>
           <label className="edit-field">
@@ -192,7 +193,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
       <div className="set-card-main">
         <div className="set-card-left">
           <div className="set-index">Set {set.set_num}</div>
-          <div className="set-performance">{formatWeightRep(set)}</div>
+          <div className="set-performance">{formatWeightRep(set, units)}</div>
         </div>
 
         <div className="set-card-right">
@@ -225,7 +226,7 @@ function SetRow({ set, previousSet, onUpdate, onDelete, onError }) {
   )
 }
 
-function AddSetForm({ onSave, onCancel, onError }) {
+function AddSetForm({ onSave, onCancel, onError, units }) {
   const [form, setForm] = useState({ weight_kg: '', reps: '', note: '' })
   const [saving, setSaving] = useState(false)
 
@@ -237,7 +238,7 @@ function AddSetForm({ onSave, onCancel, onError }) {
     setSaving(true)
     try {
       await onSave({
-        weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
+        weight_kg: fromDisplayWeight(form.weight_kg, units),
         reps: form.reps !== '' ? parseInt(form.reps, 10) : null,
         note: form.note || null,
       })
@@ -253,7 +254,7 @@ function AddSetForm({ onSave, onCancel, onError }) {
       <div className="add-set-label">New set</div>
       <div className="edit-grid">
         <label className="edit-field">
-          <span>Weight (kg)</span>
+          <span>Weight ({unitLabel(units)})</span>
           <input type="number" step="0.5" value={form.weight_kg} onChange={field('weight_kg')} placeholder="BW" autoFocus />
         </label>
         <label className="edit-field">
@@ -278,7 +279,7 @@ function AddSetForm({ onSave, onCancel, onError }) {
   )
 }
 
-function AddExerciseForm({ onSave, onCancel, onError }) {
+function AddExerciseForm({ onSave, onCancel, onError, units }) {
   const [form, setForm] = useState({ exercise: '', weight_kg: '', reps: '' })
   const [saving, setSaving] = useState(false)
 
@@ -291,7 +292,7 @@ function AddExerciseForm({ onSave, onCancel, onError }) {
     setSaving(true)
     try {
       await onSave(form.exercise.trim(), {
-        weight_kg: form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
+        weight_kg: fromDisplayWeight(form.weight_kg, units),
         reps: form.reps !== '' ? parseInt(form.reps, 10) : null,
       })
     } catch (err) {
@@ -310,7 +311,7 @@ function AddExerciseForm({ onSave, onCancel, onError }) {
       </label>
       <div className="edit-grid">
         <label className="edit-field">
-          <span>Weight (kg)</span>
+          <span>Weight ({unitLabel(units)})</span>
           <input type="number" step="0.5" value={form.weight_kg} onChange={field('weight_kg')} placeholder="BW" />
         </label>
         <label className="edit-field">
@@ -341,6 +342,7 @@ function ExerciseBlock({
   onDeleteExercise,
   onAddSet,
   onError,
+  units,
 }) {
   const [editingName, setEditingName] = useState(false)
   const [nameForm, setNameForm] = useState('')
@@ -350,7 +352,7 @@ function ExerciseBlock({
 
   const topSet = getTopSet(sets)
   const prevTop = getTopSet(previousSets)
-  const topDelta = compareSet(topSet, prevTop)
+  const topDelta = compareSet(topSet, prevTop, units)
 
   function startRename() {
     setNameForm(exercise)
@@ -429,7 +431,7 @@ function ExerciseBlock({
             </div>
           )}
           {prevTop ? (
-            <p className="exercise-prev-line">Last time: {formatWeightRep(prevTop)}</p>
+            <p className="exercise-prev-line">Last time: {formatWeightRep(prevTop, units)}</p>
           ) : (
             <p className="exercise-prev-line">No previous comparison</p>
           )}
@@ -463,12 +465,13 @@ function ExerciseBlock({
             onUpdate={onUpdate}
             onDelete={onDelete}
             onError={onError}
+            units={units}
           />
         ))}
       </div>
 
       {showAddSet ? (
-        <AddSetForm onSave={handleAddSet} onCancel={() => setShowAddSet(false)} onError={onError} />
+        <AddSetForm onSave={handleAddSet} onCancel={() => setShowAddSet(false)} onError={onError} units={units} />
       ) : (
         <button className="add-set-btn" onClick={() => { setShowAddSet(true); setConfirmDeleteEx(false) }}>
           + Add set
@@ -481,6 +484,7 @@ function ExerciseBlock({
 export default function SessionDetail() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  const units = useUnits()
 
   const [session, setSession] = useState(null)
   const [sets, setSets] = useState([])
@@ -973,11 +977,12 @@ export default function SessionDetail() {
             onDeleteExercise={handleDeleteExercise}
             onAddSet={handleAddSet}
             onError={handleActionError}
+            units={units}
           />
         ))}
 
         {showAddExercise ? (
-          <AddExerciseForm onSave={handleAddExercise} onCancel={() => setShowAddExercise(false)} onError={handleActionError} />
+          <AddExerciseForm onSave={handleAddExercise} onCancel={() => setShowAddExercise(false)} onError={handleActionError} units={units} />
         ) : (
           <button className="add-exercise-btn" onClick={() => { clearActionError(); setShowAddExercise(true) }}>
             + Add exercise

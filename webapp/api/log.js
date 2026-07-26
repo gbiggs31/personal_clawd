@@ -1,7 +1,56 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
-import { MODEL_HAIKU, cachedSystem } from '../lib/models.js'
+import { MODEL_HAIKU, cachedSystem, firstText, parseJsonResponse } from '../lib/models.js'
 import { parseDateFromNote } from '../lib/parse-date.js'
+
+// The user's distinct exercise names, cached in the profile KV store.
+// Rebuilding it meant selecting every set row the user has ever logged on
+// every single log call — which also silently truncated at PostgREST's
+// 1000-row cap, quietly degrading the name-normalisation prompt.
+const VOCAB_KEY = '_exercise_vocab'
+
+async function loadExerciseVocab(supabase, uid) {
+  const { data } = await supabase
+    .from('profile').select('value')
+    .eq('telegram_user_id', uid).eq('key', VOCAB_KEY).maybeSingle()
+
+  if (data?.value) {
+    try {
+      const parsed = JSON.parse(data.value)
+      if (Array.isArray(parsed)) return parsed
+    } catch { /* corrupt entry — rebuild below */ }
+  }
+  return null
+}
+
+async function rebuildExerciseVocab(supabase, uid) {
+  // Only reached on a cache miss or when a genuinely new name appears, so the
+  // wide scan happens rarely rather than on every set logged.
+  const { data } = await supabase
+    .from('sets').select('exercise')
+    .eq('telegram_user_id', uid).not('exercise', 'is', null)
+    .limit(5000)
+
+  const names = [...new Set((data || []).map(r => r.exercise).filter(Boolean))].sort()
+  await supabase.from('profile').upsert(
+    { telegram_user_id: uid, key: VOCAB_KEY, value: JSON.stringify(names) },
+    { onConflict: 'telegram_user_id,key' }
+  )
+  return names
+}
+
+/** Add newly-seen exercise names to the cached vocabulary (fire-and-forget). */
+function extendExerciseVocab(supabase, uid, vocab, newNames) {
+  const known = new Set(vocab.map(n => n.toLowerCase()))
+  const additions = newNames.filter(n => n && !known.has(n.toLowerCase()))
+  if (!additions.length) return
+
+  const merged = [...vocab, ...additions].sort()
+  supabase.from('profile')
+    .upsert({ telegram_user_id: uid, key: VOCAB_KEY, value: JSON.stringify(merged) },
+            { onConflict: 'telegram_user_id,key' })
+    .then(({ error }) => { if (error) console.error('[log] vocab update failed:', error.message) })
+}
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -174,6 +223,10 @@ export default async function handler(req, res) {
 
   // Build prompt — second-pass clarification or fresh parse
   let userContent
+  // Stays null on the clarification path, where the vocabulary is never
+  // loaded — extending from an empty list would overwrite the cached
+  // vocabulary with just the names in this one message.
+  let knownExercises = null
   if (partialParse && clarification) {
     userContent = (
       `Original log:\n${text}\n\n` +
@@ -182,14 +235,10 @@ export default async function handler(req, res) {
     )
   } else {
     userContent = text.trim()
-    const { data: exercisesData } = await supabase
-      .from('sets')
-      .select('exercise')
-      .eq('telegram_user_id', uid)
-      .not('exercise', 'is', null)
-    const knownExercises = [...new Set((exercisesData || []).map(r => r.exercise).filter(Boolean))]
-    if (knownExercises.length) {
-      userContent += '\n\nKnown exercises for this user:\n' + knownExercises.sort().map(e => `- ${e}`).join('\n')
+    knownExercises = await loadExerciseVocab(supabase, uid)
+      ?? await rebuildExerciseVocab(supabase, uid)
+    if (knownExercises?.length) {
+      userContent += '\n\nKnown exercises for this user:\n' + knownExercises.map(e => `- ${e}`).join('\n')
     }
   }
 
@@ -203,19 +252,13 @@ export default async function handler(req, res) {
     { signal: AbortSignal.timeout(30_000) }
   )
 
-  if (!parseResponse.content?.length) {
+  const rawText = firstText(parseResponse)
+  if (!rawText) {
     return res.status(500).json({ error: 'No response from AI. Please try again.' })
   }
-  let raw = parseResponse.content[0].text.trim()
-  if (raw.startsWith('```')) {
-    raw = raw.split('\n').slice(1).join('\n')
-    raw = raw.split('```')[0].trim()
-  }
 
-  let result
-  try {
-    result = JSON.parse(raw)
-  } catch {
+  const result = parseJsonResponse(rawText)
+  if (!result) {
     return res.status(200).json({ ok: false, message: 'Could not parse workout — try rephrasing.' })
   }
 
@@ -266,6 +309,8 @@ export default async function handler(req, res) {
   }
 
   const exerciseNames = [...new Set(sets.map(s => s.exercise))]
+  if (knownExercises) extendExerciseVocab(supabase, uid, knownExercises, exerciseNames)
+
   const setsPerExercise = sets.reduce((acc, s) => {
     acc[s.exercise] = (acc[s.exercise] || 0) + 1
     return acc

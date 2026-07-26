@@ -9,7 +9,14 @@ import {
   formatWeightRep,
   daysBetween,
 } from '../utils/training.js'
+import { useUnits, formatWeight } from '../utils/units.js'
+import { getCached, setCached, CACHE_KEYS } from '../utils/page-cache.js'
 import './Dashboard.css'
+
+// Sessions are paged in rather than loaded whole: the old query pulled up to
+// 500 sessions and then every set belonging to them, which grew linearly with
+// account age and hit PostgREST's 1000-row cap on the sets side.
+const PAGE_SIZE = 30
 
 const GYM_TYPES   = ['All', 'Push', 'Pull', 'Legs', 'Upper', 'Full Body', 'Other']
 const KNOWN_TYPES = ['push', 'pull', 'legs', 'upper', 'full body']
@@ -244,12 +251,20 @@ function ExerciseHistoryPanel({ normEx, history, onClose, onOpenSession }) {
 export default function Dashboard() {
   const navigate = useNavigate()
 
-  const [sessions, setSessions]               = useState([])
-  const [allSets, setAllSets]                 = useState([])
-  const [exerciseMap, setExerciseMap]         = useState({})   // sessionId → [normEx, ...]
-  const [stravaActivities, setStravaActivities] = useState([])
-  const [stravaConnected, setStravaConnected] = useState(false)
-  const [loading, setLoading]                 = useState(true)
+  const units = useUnits()
+
+  // Seed from cache so returning to this tab paints immediately; the effect
+  // below still refetches in the background to pick up anything new.
+  const seed       = getCached(CACHE_KEYS.dashboardPage0)
+  const stravaSeed = getCached(CACHE_KEYS.dashboardStrava)
+
+  const [sessions, setSessions]               = useState(() => seed?.sessions ?? [])
+  const [allSets, setAllSets]                 = useState(() => seed?.sets ?? [])
+  const [stravaActivities, setStravaActivities] = useState(() => stravaSeed?.activities ?? [])
+  const [stravaConnected, setStravaConnected] = useState(() => stravaSeed?.connected ?? false)
+  const [loading, setLoading]                 = useState(() => !seed)
+  const [loadingMore, setLoadingMore]         = useState(false)
+  const [hasMore, setHasMore]                 = useState(() => seed?.hasMore ?? false)
   const [error, setError]                     = useState('')
   const [typeFilter, setTypeFilter]           = useState('All')
   const [exSearch, setExSearch]               = useState('')
@@ -257,39 +272,48 @@ export default function Dashboard() {
   const [expandedIds, setExpandedIds]         = useState(new Set())
   const [selectedExercise, setSelected]       = useState('')  // normalized key
 
+  // Fetch one page of sessions plus the sets belonging to just those sessions.
+  async function loadPage(pageIndex, { append }) {
+    const from = pageIndex * PAGE_SIZE
+    const { data: sessionData, error: sErr } = await supabase
+      .from('sessions')
+      .select('*')
+      .order('date', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1)
+
+    if (sErr) { setError(sErr.message); return }
+
+    const page = sessionData || []
+    setHasMore(page.length === PAGE_SIZE)
+
+    let pageSets = []
+    if (page.length) {
+      const ids = page.map(s => s.session_id)
+      const { data: setData, error: setErr } = await supabase
+        .from('sets').select('*').in('session_id', ids).order('set_num')
+      if (setErr) { setError(setErr.message); return }
+      pageSets = setData || []
+    }
+
+    setSessions(prev => (append ? [...prev, ...page] : page))
+    setAllSets(prev => (append ? [...prev, ...pageSets] : pageSets))
+
+    // Only the first page is cached — later pages are cheap to re-fetch and
+    // caching them would make the entry unbounded.
+    if (!append) {
+      setCached(CACHE_KEYS.dashboardPage0, {
+        sessions: page,
+        sets: pageSets,
+        hasMore: page.length === PAGE_SIZE,
+      })
+    }
+  }
+
   useEffect(() => {
     async function load() {
-      const { data: sessionData, error: sErr } = await supabase
-        .from('sessions')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(500)
+      await loadPage(0, { append: false })
 
-      if (sErr) { setError(sErr.message); setLoading(false); return }
-
-      setSessions(sessionData || [])
-
-      if (sessionData?.length) {
-        const ids = sessionData.map(s => s.session_id)
-        const { data: setData, error: setErr } = await supabase
-          .from('sets').select('*').in('session_id', ids).order('set_num')
-
-        if (setErr) { setError(setErr.message); setLoading(false); return }
-
-        const map = {}
-        for (const row of setData || []) {
-          const sid  = row.session_id
-          const norm = normalizeExercise(row.exercise)
-          if (!norm) continue
-          if (!map[sid]) map[sid] = []
-          if (!map[sid].includes(norm)) map[sid].push(norm)
-        }
-
-        setExerciseMap(map)
-        setAllSets(setData || [])
-      }
-
-      // Fetch Strava activities in parallel (non-blocking)
+      // Fetch Strava activities (non-blocking)
       try {
         const { data: { session: authSession } } = await supabase.auth.getSession()
         if (authSession?.access_token) {
@@ -300,6 +324,10 @@ export default function Dashboard() {
             const data = await res.json()
             setStravaConnected(data.connected || false)
             setStravaActivities(data.activities || [])
+            setCached(CACHE_KEYS.dashboardStrava, {
+              connected: data.connected || false,
+              activities: data.activities || [],
+            })
           }
         }
       } catch { /* non-fatal */ }
@@ -308,6 +336,27 @@ export default function Dashboard() {
     }
     load()
   }, [])
+
+  async function loadMore() {
+    if (loadingMore) return
+    setLoadingMore(true)
+    await loadPage(Math.ceil(sessions.length / PAGE_SIZE), { append: true })
+    setLoadingMore(false)
+  }
+
+  // sessionId → [normEx, ...], derived rather than stored so it can't drift
+  // out of sync with allSets as pages are appended.
+  const exerciseMap = useMemo(() => {
+    const map = {}
+    for (const row of allSets) {
+      const norm = normalizeExercise(row.exercise)
+      if (!norm) continue
+      const sid = row.session_id
+      if (!map[sid]) map[sid] = []
+      if (!map[sid].includes(norm)) map[sid].push(norm)
+    }
+    return map
+  }, [allSets])
 
   // Group sets by session
   const setsBySession = useMemo(() => {
@@ -337,13 +386,13 @@ export default function Dashboard() {
       for (const [normEx, exSets] of Object.entries(byExercise)) {
         const top  = getTopSet(exSets)
         const prev = exerciseHistory[normEx]?.at(-1)
-        const delta = compareTopSets(top, prev?.topSet)
+        const delta = compareTopSets(top, prev?.topSet, units)
 
         highlights.push({
           normEx,
           displayEx: displayExercise(normEx),
           topSet: top,
-          weightText: top?.weight_kg != null ? `${top.weight_kg}kg` : 'BW',
+          weightText: formatWeight(top?.weight_kg, units),
           repText: top?.reps != null ? `× ${top.reps}` : '',
           delta,
         })
@@ -355,7 +404,7 @@ export default function Dashboard() {
           session_type: session.session_type,
           topSet: top,
           setCount: exSets.length,
-          weightText: top?.weight_kg != null ? `${top.weight_kg}kg` : 'BW',
+          weightText: formatWeight(top?.weight_kg, units),
           repText: top?.reps != null ? `× ${top.reps}` : '',
         })
       }
@@ -367,7 +416,7 @@ export default function Dashboard() {
       })
     }
     return result
-  }, [sessions, setsBySession])
+  }, [sessions, setsBySession, units])
 
   // Exercise history lookup (for the side panel)
   const exerciseHistoryLookup = useMemo(() => {
@@ -389,13 +438,13 @@ export default function Dashboard() {
           session_type: session.session_type,
           setCount: exSets.length,
           topSet: top,
-          weightText: top?.weight_kg != null ? `${top.weight_kg}kg` : 'BW',
+          weightText: formatWeight(top?.weight_kg, units),
           repText: top?.reps != null ? `× ${top.reps}` : '',
         })
       }
     }
     return lookup
-  }, [sessions, setsBySession])
+  }, [sessions, setsBySession, units])
 
   // Filtered + sorted combined list (gym sessions + Strava activities)
   const filtered = useMemo(() => {
@@ -473,13 +522,13 @@ export default function Dashboard() {
             <h1 className="dash-title">Training log</h1>
             <p className="dash-count">
               {isFiltered
-                ? `${filtered.length} of ${totalEntries} entries`
+                ? `${filtered.length} of ${totalEntries} loaded`
                 : sessions.length > 0 && stravaActivities.length > 0
-                  ? `${sessions.length} sessions · ${stravaActivities.length} activities`
-                  : `${sessions.length} sessions`}
+                  ? `${sessions.length}${hasMore ? '+' : ''} sessions · ${stravaActivities.length} activities`
+                  : `${sessions.length}${hasMore ? '+' : ''} sessions`}
             </p>
           </div>
-          <Link to="/chat" className="log-chat-btn">Ask Avenra</Link>
+          <Link to="/log" state={{ mode: 'chat' }} className="log-chat-btn">Ask Avenra</Link>
         </div>
 
         {sessions.length > 0 && <StatsStrip sessions={sessions} />}
@@ -550,6 +599,12 @@ export default function Dashboard() {
                   onExerciseClick={setSelected}
                 />
               )
+            )}
+
+            {hasMore && !exSearch.trim() && (
+              <button className="load-more-btn" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? 'Loading…' : `Load ${PAGE_SIZE} more sessions`}
+              </button>
             )}
           </div>
 

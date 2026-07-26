@@ -12,29 +12,24 @@
  */
 
 import crypto from 'crypto'
-import { createClient } from '@supabase/supabase-js'
-
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL
+import { authenticateUser } from '../lib/auth.js'
+import { isAdmin } from '../lib/is-admin.js'
 
 export default async function handler(req, res) {
   if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     console.error('[admin] Missing required Supabase env vars')
     return res.status(500).json({ error: 'Service misconfigured' })
   }
-  if (!ADMIN_EMAIL) {
+  if (!process.env.ADMIN_EMAIL && !process.env.VITE_ADMIN_EMAIL) {
     console.error('[admin] ADMIN_EMAIL env var not set — all admin requests will be rejected')
     return res.status(500).json({ error: 'Admin not configured' })
   }
 
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Unauthorized' })
-
-  const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-  if (authError || !user || user.email !== ADMIN_EMAIL) {
-    return res.status(403).json({ error: 'Forbidden' })
-  }
+  // Admin accounts need not be linked to a telegram_user_id.
+  const auth = await authenticateUser(req, { requireLink: false })
+  if (auth.error) return res.status(auth.status).json({ error: auth.error })
+  if (!isAdmin(auth.user)) return res.status(403).json({ error: 'Forbidden' })
+  const { supabase } = auth
 
   const { resource, action } = req.query
 

@@ -1,22 +1,47 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
-import { MODEL_SONNET, MODEL_HAIKU, cachedSystem } from '../lib/models.js'
+import { MODEL_SONNET, MODEL_HAIKU, THINKING, cachedSystem, firstText, parseJsonResponse } from '../lib/models.js'
 import { coachingStyleNote } from '../lib/coaching-style.js'
 import { parseDateFromNote } from '../lib/parse-date.js'
 
-// Extract a duration in minutes from free-form note text. Returns integer or null.
+// Words that make a nearby minute count something other than session duration
+// — rest periods, timed holds, and cardio blocks all read as "N min".
+const NOT_A_DURATION = /rest|between|pause|hold|plank|hang|carry|walk|row|bike|jog|run|sprint|interval|round|per set|each side|amrap|emom|warm|cool/i
+// "took 50 mins", "session was 50 mins", "~50 mins"
+const DURATION_CUE = /(?:took|lasted|duration|session|workout|total|around|about|approx\.?|~)\s*(?:was\s*)?$/i
+// "50 mins total", "50 minutes long"
+const DURATION_TRAILER = /^\s*(?:session|workout|total|long|in the gym)/i
+
+/**
+ * Extract a session duration in minutes from free-form note text.
+ *
+ * A bare minute count is only accepted when the note actually frames it as the
+ * session length: a matching cue word before it, a qualifier after it, or the
+ * note opening with it. Otherwise "/done felt strong, 3 min rest between sets"
+ * would record a 3-minute session.
+ */
 function parseDurationFromNote(text) {
   if (!text) return null
   const t = text.toLowerCase()
 
-  const hm = t.match(/\b(\d+)\s*h(?:ours?)?\s*(\d+)\s*m(?:in(?:utes?)?)?\b/)
+  // Note the trailing `s?` on the minute suffix: without it "45 mins" — the
+  // most natural way to write this — matched nothing at all.
+  const hm = t.match(/\b(\d+)\s*h(?:(?:ou)?rs?)?\s*(\d+)\s*m(?:in(?:ute)?s?)?\b/)
   if (hm) return parseInt(hm[1]) * 60 + parseInt(hm[2])
 
-  const h = t.match(/\b(\d+)\s*h(?:ours?)\b/)
+  const h = t.match(/\b(\d+)\s*h(?:(?:ou)?rs?)\b/)
   if (h) return parseInt(h[1]) * 60
 
-  const m = t.match(/\b(\d+)\s*m(?:in(?:utes?)?)?\b/)
-  if (m) return parseInt(m[1])
+  for (const m of t.matchAll(/\b(\d+)\s*m(?:in(?:ute)?s?)?\b/g)) {
+    const start = m.index
+    const before = t.slice(Math.max(0, start - 25), start)
+    const after  = t.slice(start + m[0].length, start + m[0].length + 25)
+
+    if (NOT_A_DURATION.test(before) || NOT_A_DURATION.test(after)) continue
+    if (start === 0 || DURATION_CUE.test(before) || DURATION_TRAILER.test(after)) {
+      return parseInt(m[1])
+    }
+  }
 
   return null
 }
@@ -162,14 +187,8 @@ export default async function handler(req, res) {
       },
       { signal: AbortSignal.timeout(20_000) }
     )
-    try {
-      if (!classifyRes.content?.length) throw new Error('empty response')
-      let raw = classifyRes.content[0].text.trim()
-      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-      classification = JSON.parse(raw)
-    } catch {
-      classification = { session_type: 'other', cardio_flag: false, abs_flag: false, uncertain: true }
-    }
+    classification = parseJsonResponse(firstText(classifyRes))
+      ?? { session_type: 'other', cardio_flag: false, abs_flag: false, uncertain: true }
   }
 
   const today = new Date().toISOString().split('T')[0]
@@ -181,9 +200,14 @@ export default async function handler(req, res) {
   const durationMins = durationOverride
     ?? (startedAt ? Math.round((Date.now() - new Date(startedAt).getTime()) / 60000) : null)
 
-  // If backdating, update all sets for this session to the correct date
+  // If backdating, move only the sets that took today's default date. Sets the
+  // user dated explicitly when logging them keep the date they were given.
   if (dateOverride) {
-    await supabase.from('sets').update({ date: dateOverride }).eq('session_id', sessionId).eq('telegram_user_id', uid)
+    await supabase.from('sets')
+      .update({ date: dateOverride })
+      .eq('session_id', sessionId)
+      .eq('telegram_user_id', uid)
+      .eq('date', today)
   }
 
   // Generate summary BEFORE inserting session — so if this fails, session is not committed
@@ -196,16 +220,20 @@ export default async function handler(req, res) {
     const summaryRes = await anthropic.messages.create(
       {
         model: MODEL_SONNET,
-        max_tokens: 512,
+        // Runs once per session, and spotting the trend worth calling out is
+        // reasoning work — so thinking is on, with headroom for it plus the
+        // ~300-token debrief.
+        max_tokens: 2500,
+        thinking: THINKING,
         system: cachedSystem(SESSION_SUMMARY_SYSTEM, styleNote ? `\n\n${styleNote}` : ''),
         messages: [{ role: 'user', content: summaryContent }],
       },
-      { signal: AbortSignal.timeout(30_000) }
+      { signal: AbortSignal.timeout(45_000) }
     )
-    if (!summaryRes.content?.length) {
+    summary = firstText(summaryRes)?.trim()
+    if (!summary) {
       return res.status(500).json({ error: 'Failed to generate session summary. Please try again.' })
     }
-    summary = summaryRes.content[0].text.trim()
   } catch (err) {
     console.error('Summary generation error:', err.message)
     return res.status(500).json({ error: 'Failed to generate session summary. Please try again.' })
@@ -226,6 +254,12 @@ export default async function handler(req, res) {
 
   const { error: sessionError } = await supabase.from('sessions').insert(sessionRow)
   if (sessionError) {
+    // 23505 = unique violation on session_id. The check above isn't atomic, so
+    // a double-submit lands here; report it as the friendly "already closed"
+    // rather than a 500.
+    if (sessionError.code === '23505') {
+      return res.status(400).json({ error: 'Session already closed.' })
+    }
     console.error('Session insert error:', sessionError)
     return res.status(500).json({ error: 'Failed to save session.' })
   }

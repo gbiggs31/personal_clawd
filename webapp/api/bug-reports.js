@@ -1,9 +1,5 @@
 import { authenticateUser } from '../lib/auth.js'
-
-function isAdmin(user) {
-  const adminEmail = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL
-  return Boolean(adminEmail) && user?.email === adminEmail
-}
+import { isAdmin } from '../lib/is-admin.js'
 
 function normalizePageUrl(value) {
   if (typeof value !== 'string') return null

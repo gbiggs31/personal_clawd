@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { authenticateUser } from '../lib/auth.js'
-import { MODEL_SONNET, cachedSystem } from '../lib/models.js'
+import { MODEL_SONNET, NO_THINKING, cachedSystem } from '../lib/models.js'
 import { getStravaContext } from '../lib/strava-context.js'
 import { coachingStyleNote } from '../lib/coaching-style.js'
+import { withinChatRateLimit } from '../lib/rate-limit.js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -85,26 +86,36 @@ export default async function handler(req, res) {
   if (auth.error) return res.status(auth.status).json({ error: auth.error })
   const { supabase, user, uid } = auth
 
-  // Rate limit: 30 AI messages per hour per user
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-  const { count: recentMessages } = await supabase
-    .from('chat_messages')
-    .select('*', { count: 'exact', head: true })
-    .eq('auth_user_id', user.id)
-    .eq('role', 'user')
-    .gte('created_at', oneHourAgo)
-  if ((recentMessages ?? 0) >= 30) {
+  // Validate the body before doing any of the expensive context assembly below.
+  const { messages } = req.body || {}
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'No messages provided' })
+  }
+
+  const allowed = await withinChatRateLimit(supabase, user.id)
+  if (!allowed) {
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' })
   }
 
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  const [{ data: sets }, { data: sessions }, { data: cycles }, { data: profileRows }] = await Promise.all([
-    supabase.from('sets').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
-    supabase.from('sessions').select('*').eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
-    supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
-    supabase.from('profile').select('key,value').eq('telegram_user_id', uid).in('key', ['units', 'coaching_style']),
-  ])
+  // Strava context rides in the same batch — awaiting it separately added two
+  // serial round trips to every request.
+  const [{ data: sets }, { data: sessions }, { data: cycles }, { data: profileRows }, stravaContext] =
+    await Promise.all([
+      supabase.from('sets')
+        .select('session_id, date, set_num, exercise, weight_kg, reps, rpe, rir, note, injury_flag, injury_body_part')
+        .eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
+      supabase.from('sessions')
+        .select('session_id, date, duration_mins, overall_note, summary')
+        .eq('telegram_user_id', uid).gte('date', cutoff).order('date'),
+      supabase.from('cycles').select('*').eq('telegram_user_id', uid).eq('status', 'active').limit(1),
+      supabase.from('profile').select('key,value').eq('telegram_user_id', uid).in('key', ['units', 'coaching_style']),
+      getStravaContext(user.id, supabase).catch(err => {
+        console.warn('[chat] strava context error (non-fatal):', err.message)
+        return null
+      }),
+    ])
 
   const profileMap = Object.fromEntries((profileRows || []).map(r => [r.key, r.value]))
   const units = profileMap.units || 'metric'
@@ -116,14 +127,6 @@ export default async function handler(req, res) {
   const historyStr = formatHistory(sets || [], sessions || [], units)
   const cycleStr = cycles?.[0] ? formatCycle(cycles[0]) : ''
 
-  // Strava context — non-blocking, degrades gracefully if unavailable
-  let stravaContext = null
-  try {
-    stravaContext = await getStravaContext(user.id, supabase)
-  } catch (err) {
-    console.warn('[chat] strava context error (non-fatal):', err.message)
-  }
-
   const system = `You are Avenra, an AI training assistant embedded in the user's workout log web app.
 
 Answer questions about their training concisely and directly. Reference specific numbers, dates, and exercises from their log. Surface patterns, trends, and anything worth noting. Keep responses focused — the user can ask follow-up questions.
@@ -132,11 +135,6 @@ ${unitsNote}
 ${styleNote ? '\n' + styleNote : ''}
 ${stravaContext ? stravaContext + '\n\n' : ''}${cycleStr ? cycleStr + '\n\n' : ''}=== TRAINING HISTORY (last 90 days) ===
 ${historyStr}`
-
-  const { messages } = req.body
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'No messages provided' })
-  }
 
   // Log the user's message (non-blocking)
   const userMessage = messages[messages.length - 1]
@@ -158,7 +156,11 @@ ${historyStr}`
     const stream = anthropic.messages.stream(
       {
         model: MODEL_SONNET,
-        max_tokens: 1024,
+        max_tokens: 1500,
+        // Thinking off: this is a streamed chat, and adaptive thinking (Sonnet
+        // 5's default when omitted) would stall time-to-first-token by seconds.
+        // /lift and the daily plan are where the reasoning budget goes instead.
+        thinking: NO_THINKING,
         // Cache the system block (instructions + 90-day history): the turns of a
         // single conversation reuse it within the 5-min TTL at ~10% input cost.
         system: cachedSystem(system),

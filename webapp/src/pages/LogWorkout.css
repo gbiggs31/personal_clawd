@@ -771,3 +771,173 @@
     width: 100%;
   }
 }
+
+/* ── /lift history card ────────────────────────────────────────────────────── */
+
+.lift-card {
+  margin-left: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.lift-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lift-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.lift-card-count {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.lift-rows {
+  padding: 4px 0;
+  overflow-x: auto;
+}
+
+.lift-row {
+  display: grid;
+  grid-template-columns: 52px 1fr auto auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: nowrap;
+}
+
+/* Most recent session reads brightest, older ones recede. Order matters:
+   the base rule must come before the positional overrides. */
+.lift-row                { color: #c6ccd8; }
+.lift-row:nth-child(n+4) { color: var(--muted); }
+.lift-row:first-child    { color: var(--text); }
+
+.lift-row-date {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lift-row-sets  { overflow: hidden; text-overflow: ellipsis; }
+
+.lift-row-rpe {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lift-row-injury { color: #ffb84d; font-size: 12px; }
+
+.lift-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.lift-stat { color: var(--text); }
+
+.lift-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+.lift-delta       { font-size: 12px; font-weight: 600; }
+.lift-delta.up    { color: var(--accent); }
+.lift-delta.down  { color: var(--danger); }
+.lift-delta.flat  { color: var(--muted); }
+
+.lift-suggestion {
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  background: rgba(141, 247, 192, 0.05);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.lift-suggestion-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent-dim);
+  margin-right: 8px;
+}
+
+/* Disambiguation chips */
+
+.lift-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.lift-candidate {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.lift-candidate:hover {
+  background: rgba(141, 247, 192, 0.1);
+  border-color: rgba(141, 247, 192, 0.3);
+}
+
+/* Streamed coaching advice under the card */
+
+.lift-advice {
+  display: flex;
+  gap: 9px;
+  margin-left: 20px;
+  padding: 2px 2px 2px 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.lift-advice-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.lift-advice-body { min-width: 0; flex: 1; }
+
+@media (max-width: 480px) {
+  .lift-card,
+  .lift-advice { margin-left: 0; }
+
+  .lift-row {
+    grid-template-columns: 46px 1fr auto;
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .lift-row-rpe { display: none; }
+}

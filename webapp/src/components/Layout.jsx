@@ -1,26 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
+import { useAuth } from '../utils/auth-context.jsx'
 import InstallPrompt from './InstallPrompt.jsx'
 import SupportCTA from './SupportCTA.jsx'
 import './Layout.css'
 
+// Layout remounts on every navigation, so anything here runs per tab switch.
+// Registering the service worker is idempotent but pointless to repeat; guard
+// it at module scope.
+let swRegistered = false
+
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const [isAdmin, setIsAdmin]         = useState(false)
+  const { session } = useAuth()
   const [menuOpen, setMenuOpen]       = useState(false)
   const [showAINotice, setShowAINotice] = useState(false)
   const menuRef = useRef(null)
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      const email = data.session?.user?.email
-      if (email) setIsAdmin(email === import.meta.env.VITE_ADMIN_EMAIL)
-    })
+  // Derived from context rather than a per-mount getSession() round trip.
+  const isAdmin = Boolean(
+    session?.user?.email && session.user.email === import.meta.env.VITE_ADMIN_EMAIL
+  )
 
-    // Register service worker for PWA installability
-    if ('serviceWorker' in navigator) {
+  useEffect(() => {
+    if (!swRegistered && 'serviceWorker' in navigator) {
+      swRegistered = true
       navigator.serviceWorker.register('/sw.js').catch(() => {})
     }
 

@@ -1,3 +1,5 @@
+import { formatWeightReps, toDisplayWeight, unitLabel } from './units.js'
+
 // ── Exercise name helpers ─────────────────────────────────────────────────────
 
 /**
@@ -74,16 +76,19 @@ export function buildExerciseHistory(sets) {
 
 /**
  * Compare two top sets and return a direction + text delta.
+ * Pass the user's unit preference so the delta reads in the same unit as the
+ * weights it sits next to.
  */
-export function compareTopSets(current, previous) {
+export function compareTopSets(current, previous, units = 'metric') {
   if (!current || !previous) return null
   const cw = current.weight_kg ?? 0, pw = previous.weight_kg ?? 0
   const cr = current.reps ?? 0,      pr = previous.reps ?? 0
 
   const round = n => Math.round(n * 10) / 10
+  const asWeight = kg => `${round(toDisplayWeight(Math.abs(kg), units))}${unitLabel(units)}`
 
-  if (cw > pw) return { direction: 'up',   text: `+${round(cw - pw)}kg` }
-  if (cw < pw) return { direction: 'down', text: `${round(cw - pw)}kg` }
+  if (cw > pw) return { direction: 'up',   text: `+${asWeight(cw - pw)}` }
+  if (cw < pw) return { direction: 'down', text: `-${asWeight(cw - pw)}` }
   if (cr > pr) return { direction: 'up',   text: `+${cr - pr} rep${cr - pr === 1 ? '' : 's'}` }
   if (cr < pr) return { direction: 'down', text: `${cr - pr} rep${pr - cr === 1 ? '' : 's'}` }
   return { direction: 'flat', text: 'same' }
@@ -91,12 +96,10 @@ export function compareTopSets(current, previous) {
 
 /**
  * Format a set's weight and reps for one-line display.
+ * Re-exported from utils/units.js — kept here so existing imports keep working.
  */
-export function formatWeightRep(set) {
-  if (!set) return ''
-  const weight = set.weight_kg != null ? `${set.weight_kg}kg` : 'BW'
-  const reps   = set.reps       != null ? `× ${set.reps}`    : ''
-  return `${weight} ${reps}`.trim()
+export function formatWeightRep(set, units = 'metric') {
+  return formatWeightReps(set, units)
 }
 
 // ── Session / coaching helpers ────────────────────────────────────────────────
