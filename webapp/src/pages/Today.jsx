@@ -83,7 +83,7 @@ function WeekStrip() {
       }
       try {
         const token = await getToken()
-        const res   = await fetch('/api/history', { headers: { Authorization: `Bearer ${token}` } })
+        const res   = await fetch('/api/insights?view=history', { headers: { Authorization: `Bearer ${token}` } })
         if (!res.ok) return
         const data = await res.json()
         sessionStorage.setItem(cacheKey, JSON.stringify(data.sessions || []))

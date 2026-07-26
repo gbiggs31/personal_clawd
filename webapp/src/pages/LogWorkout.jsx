@@ -680,7 +680,7 @@ export default function LogWorkout() {
 
   async function handleStats() {
     const token = await getToken()
-    const res = await fetch('/api/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+    const res = await fetch('/api/insights?view=stats', { headers: { 'Authorization': `Bearer ${token}` } })
     const data = await res.json()
 
     if (!res.ok) { addFeed({ type: 'error', content: data.error || 'Failed to fetch stats.' }); return }

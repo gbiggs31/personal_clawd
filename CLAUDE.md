@@ -133,8 +133,7 @@ api/            Vercel serverless functions — one file = one route
   today-plan.js   GET   today's plan, cached per day (?refresh=1 to force)
                         · POST modify plan. Sonnet + structured outputs.
   sets.js         POST/PATCH/DELETE individual sets
-  history.js      GET   last 7 days of sessions (week strip)
-  stats.js        GET   90-day rollup (/stats command)
+  insights.js     ?view=history (7-day sessions) | ?view=stats (90-day rollup)
   profile.js      GET/POST profile key-value store
   strava.js       ?action=connect|callback|status|sync|disconnect|webhook|activities
                         no action = daily cron sync
@@ -281,6 +280,15 @@ npm run build
 `vercel.json`: SPA rewrite, 60s function `maxDuration`, daily Strava cron at
 04:00 UTC, CORS headers pinned to `https://getavenra.com` (the root `CNAME`
 says `avenra.biggsdata.com` — these disagree).
+
+---
+
+### ⚠️ The 12-function limit
+Vercel's Hobby plan allows **at most 12 serverless functions per deployment**,
+and `api/` is currently at exactly 12. **Adding any new file to `api/` will
+fail the build.** New endpoints must fold into an existing handler behind a
+query param — the established pattern here (`strava.js`, `user-actions.js`,
+`admin.js` and `insights.js` are all consolidated handlers for this reason).
 
 ---
 
