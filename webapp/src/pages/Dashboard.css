@@ -244,6 +244,10 @@
   background: #151b25;
 }
 
+.session-card a.session-date { display: inline-block; color: var(--text); text-decoration: none; padding: 4px 0; }
+.session-card a.session-date:hover { color: var(--accent); text-decoration: underline; }
+.session-card button.exercise-chip { font: inherit; font-size: 11px; }
+
 .session-card-topline {
   display: flex;
   align-items: flex-start;

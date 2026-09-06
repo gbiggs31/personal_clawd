@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import { useUnits, formatWeight, unitLabel, toDisplayWeight, fromDisplayWeight } from '../utils/units.js'
+import { invalidateCache } from '../utils/page-cache.js'
 import './SessionDetail.css'
 
 function formatDate(dateStr) {
@@ -602,6 +603,7 @@ export default function SessionDetail() {
       throw new Error(await readApiError(res, 'Failed to update session'))
     }
 
+    invalidateCache()
     return true
   }
 
@@ -693,6 +695,7 @@ export default function SessionDetail() {
       throw new Error(await readApiError(res, 'Failed to update set'))
     }
 
+    invalidateCache()
     setSets(prev => prev.map(s => (s.id === setId ? { ...s, ...fields } : s)))
     return true
   }
@@ -712,6 +715,7 @@ export default function SessionDetail() {
       throw new Error(await readApiError(res, 'Failed to delete set'))
     }
 
+    invalidateCache()
     setSets(prev => prev.filter(s => s.id !== setId))
     return true
   }
@@ -730,6 +734,7 @@ export default function SessionDetail() {
       })
     ))
 
+    invalidateCache()
     const failed = responses.find(res => !res.ok)
     if (failed) {
       throw new Error(await readApiError(failed, 'Failed to rename exercise'))
@@ -755,6 +760,7 @@ export default function SessionDetail() {
       })
     ))
 
+    invalidateCache()
     const failed = responses.find(res => !res.ok)
     if (failed) {
       throw new Error(await readApiError(failed, 'Failed to delete exercise'))
@@ -785,6 +791,7 @@ export default function SessionDetail() {
     }
 
     const { set } = await res.json()
+    invalidateCache()
     setSets(prev => [...prev, set])
     return true
   }

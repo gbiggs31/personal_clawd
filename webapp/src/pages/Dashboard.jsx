@@ -1,25 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase.js'
 import {
   normalizeExercise,
   displayExercise,
   getTopSet,
   compareTopSets,
-  formatWeightRep,
   daysBetween,
 } from '../utils/training.js'
 import { useUnits, formatWeight } from '../utils/units.js'
 import { getCached, setCached, CACHE_KEYS } from '../utils/page-cache.js'
+import ExerciseHistory from '../components/ExerciseHistory.jsx'
+import { fetchHistoryPage, HISTORY_PAGE_SIZE, WORKOUT_TYPES } from '../utils/history-data.js'
 import './Dashboard.css'
 
 // Sessions are paged in rather than loaded whole: the old query pulled up to
 // 500 sessions and then every set belonging to them, which grew linearly with
 // account age and hit PostgREST's 1000-row cap on the sets side.
-const PAGE_SIZE = 30
+const PAGE_SIZE = HISTORY_PAGE_SIZE
 
-const GYM_TYPES   = ['All', 'Push', 'Pull', 'Legs', 'Upper', 'Full Body', 'Other']
-const KNOWN_TYPES = ['push', 'pull', 'legs', 'upper', 'full body']
+const GYM_TYPES = WORKOUT_TYPES
+const KNOWN_TYPES = WORKOUT_TYPES.slice(1, -1).map(type => type.toLowerCase())
 const SORT_OPTIONS = ['Recent', 'PRs', 'Longest', 'Type']
 
 function formatDate(dateStr) {
@@ -99,7 +100,6 @@ function StravaSessionCard({ activity }) {
 }
 
 function SessionCard({ session, exercises, topHighlights, expandedSummaryIds, toggleSummary, onExerciseClick }) {
-  const navigate = useNavigate()
   const tags = []
   if (session.session_type) tags.push(session.session_type)
   if (session.cardio_flag)  tags.push('Cardio')
@@ -111,10 +111,10 @@ function SessionCard({ session, exercises, topHighlights, expandedSummaryIds, to
   const summaryNeedsMore = summaryText.length > 140
 
   return (
-    <button className="session-card" onClick={() => navigate(`/session/${session.session_id}`)}>
+    <article className="session-card">
       <div className="session-card-topline">
         <div>
-          <div className="session-date">{formatDate(session.date)}</div>
+          <Link className="session-date" to={`/session/${session.session_id}`}>{formatDate(session.date)}</Link>
           <div className="session-subline">{session.duration_mins ? `${session.duration_mins} min` : 'Session'}</div>
         </div>
         <div className="session-tags">
@@ -146,13 +146,13 @@ function SessionCard({ session, exercises, topHighlights, expandedSummaryIds, to
       {exercises.length > 0 && (
         <div className="session-exercises">
           {exercises.slice(0, 6).map(normEx => (
-            <span
+            <button
               key={normEx}
               className="exercise-chip"
               onClick={e => { e.stopPropagation(); onExerciseClick(normEx) }}
             >
               {displayExercise(normEx)}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -170,7 +170,7 @@ function SessionCard({ session, exercises, topHighlights, expandedSummaryIds, to
           )}
         </div>
       )}
-    </button>
+    </article>
   )
 }
 
@@ -252,6 +252,15 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const units = useUnits()
+  const [params, setParams] = useSearchParams()
+  const view = params.get('view') === 'exercises' ? 'exercises' : 'sessions'
+  const exerciseType = WORKOUT_TYPES.includes(params.get('type')) ? params.get('type') : 'All'
+  function updateParams(key, value) {
+    setParams(previous => { const next = new URLSearchParams(previous); next.set(key, value); return next }, { replace: true })
+  }
+  const pageRequest = useRef(null)
+  const pageBusy = useRef(false)
+  const lastPage = useRef({ index: 0, append: false })
 
   // Seed from cache so returning to this tab paints immediately; the effect
   // below still refetches in the background to pick up anything new.
@@ -274,74 +283,66 @@ export default function Dashboard() {
 
   // Fetch one page of sessions plus the sets belonging to just those sessions.
   async function loadPage(pageIndex, { append }) {
-    const from = pageIndex * PAGE_SIZE
-    const { data: sessionData, error: sErr } = await supabase
-      .from('sessions')
-      .select('*')
-      .order('date', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1)
-
-    if (sErr) { setError(sErr.message); return }
-
-    const page = sessionData || []
-    setHasMore(page.length === PAGE_SIZE)
-
-    let pageSets = []
-    if (page.length) {
-      const ids = page.map(s => s.session_id)
-      const { data: setData, error: setErr } = await supabase
-        .from('sets').select('*').in('session_id', ids).order('set_num')
-      if (setErr) { setError(setErr.message); return }
-      pageSets = setData || []
-    }
-
-    setSessions(prev => (append ? [...prev, ...page] : page))
-    setAllSets(prev => (append ? [...prev, ...pageSets] : pageSets))
-
-    // Only the first page is cached — later pages are cheap to re-fetch and
-    // caching them would make the entry unbounded.
-    if (!append) {
-      setCached(CACHE_KEYS.dashboardPage0, {
-        sessions: page,
-        sets: pageSets,
-        hasMore: page.length === PAGE_SIZE,
-      })
+    if (pageBusy.current) return
+    pageBusy.current = true
+    lastPage.current = { index: pageIndex, append }
+    if (!append && !sessions.length) setLoading(true)
+    const controller = new AbortController()
+    pageRequest.current = controller
+    setError('')
+    try {
+      const page = await fetchHistoryPage(supabase, { offset: pageIndex * PAGE_SIZE, signal: controller.signal })
+      if (controller.signal.aborted) return
+      setHasMore(page.hasMore)
+      setSessions(prev => append ? [...prev, ...page.sessions] : page.sessions)
+      setAllSets(prev => append ? [...prev, ...page.sets] : page.sets)
+      if (!append) setCached(CACHE_KEYS.dashboardPage0, page)
+    } catch (err) {
+      if (!controller.signal.aborted) setError(err.message || 'Could not load sessions. Please try again.')
+    } finally {
+      if (pageRequest.current === controller) {
+        pageBusy.current = false
+        if (!controller.signal.aborted) { setLoading(false); setLoadingMore(false) }
+      }
     }
   }
 
   useEffect(() => {
-    async function load() {
-      await loadPage(0, { append: false })
-
-      // Fetch Strava activities (non-blocking)
+    loadPage(0, { append: false })
+    let cancelled = false
+    const stravaController = new AbortController()
+    // Independent of gym history: a slow Strava response must not block it.
+    async function loadStrava() {
       try {
         const { data: { session: authSession } } = await supabase.auth.getSession()
-        if (authSession?.access_token) {
-          const res = await fetch('/api/strava?action=activities', {
-            headers: { Authorization: `Bearer ${authSession.access_token}` },
-          })
-          if (res.ok) {
-            const data = await res.json()
-            setStravaConnected(data.connected || false)
-            setStravaActivities(data.activities || [])
-            setCached(CACHE_KEYS.dashboardStrava, {
-              connected: data.connected || false,
-              activities: data.activities || [],
-            })
-          }
-        }
+        if (cancelled || !authSession?.access_token) return
+        const res = await fetch('/api/strava?action=activities', {
+          headers: { Authorization: `Bearer ${authSession.access_token}` },
+          signal: stravaController.signal,
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        setStravaConnected(data.connected || false)
+        setStravaActivities(data.activities || [])
+        setCached(CACHE_KEYS.dashboardStrava, {
+          connected: data.connected || false, activities: data.activities || [],
+        })
       } catch { /* non-fatal */ }
-
-      setLoading(false)
     }
-    load()
+    loadStrava()
+    return () => {
+      cancelled = true
+      stravaController.abort()
+      pageRequest.current?.abort()
+      pageBusy.current = false
+    }
   }, [])
 
-  async function loadMore() {
-    if (loadingMore) return
+  function loadMore() {
+    if (pageBusy.current) return
     setLoadingMore(true)
-    await loadPage(Math.ceil(sessions.length / PAGE_SIZE), { append: true })
-    setLoadingMore(false)
+    loadPage(Math.ceil(sessions.length / PAGE_SIZE), { append: true })
   }
 
   // sessionId → [normEx, ...], derived rather than stored so it can't drift
@@ -448,7 +449,7 @@ export default function Dashboard() {
 
   // Filtered + sorted combined list (gym sessions + Strava activities)
   const filtered = useMemo(() => {
-    const query      = exSearch.trim().toLowerCase()
+    const query      = normalizeExercise(exSearch)
     const showStrava = !query && (typeFilter === 'All' || typeFilter === 'Strava')
     const showGym    = typeFilter !== 'Strava'
 
@@ -512,8 +513,6 @@ export default function Dashboard() {
     })
   }
 
-  if (loading) return <div className="loading-full">Loading sessions…</div>
-
   return (
     <div className="dashboard">
       <main className="dash-main">
@@ -521,7 +520,7 @@ export default function Dashboard() {
           <div>
             <h1 className="dash-title">Training log</h1>
             <p className="dash-count">
-              {isFiltered
+              {view === 'exercises' ? 'Your lifts, workout by workout' : isFiltered
                 ? `${filtered.length} of ${totalEntries} loaded`
                 : sessions.length > 0 && stravaActivities.length > 0
                   ? `${sessions.length}${hasMore ? '+' : ''} sessions · ${stravaActivities.length} activities`
@@ -531,6 +530,14 @@ export default function Dashboard() {
           <Link to="/log" state={{ mode: 'chat' }} className="log-chat-btn">Ask Avenra</Link>
         </div>
 
+        <div className="history-view-switch" role="group" aria-label="History view">
+          <button className={`type-pill ${view === 'sessions' ? 'active' : ''}`} aria-pressed={view === 'sessions'} onClick={() => updateParams('view', 'sessions')}>Sessions</button>
+          <button className={`type-pill ${view === 'exercises' ? 'active' : ''}`} aria-pressed={view === 'exercises'} onClick={() => updateParams('view', 'exercises')}>Exercises</button>
+        </div>
+        {view === 'exercises' ? (
+          <ExerciseHistory units={units} type={exerciseType} onTypeChange={value => updateParams('type', value)} query={params.get('q') || ''} onQueryChange={value => updateParams('q', value)} />
+        ) : <>
+        {loading && <p role="status">Loading sessions…</p>}
         {sessions.length > 0 && <StatsStrip sessions={sessions} />}
 
         {/* Filters */}
@@ -541,6 +548,7 @@ export default function Dashboard() {
                 <button
                   key={t}
                   className={`type-pill ${typeFilter === t ? 'active' : ''} ${t === 'Strava' ? 'strava-pill' : ''}`}
+                  aria-pressed={typeFilter === t}
                   onClick={() => setTypeFilter(t)}
                 >
                   {t === 'Strava' ? <><StravaLogo />{' Strava'}</> : t}
@@ -558,6 +566,7 @@ export default function Dashboard() {
               <input
                 className="ex-search"
                 type="text"
+                aria-label="Filter sessions by exercise"
                 placeholder="Filter by exercise…"
                 value={exSearch}
                 onChange={e => setExSearch(e.target.value)}
@@ -566,15 +575,15 @@ export default function Dashboard() {
                 <button className="ex-search-clear" onClick={() => setExSearch('')} aria-label="Clear">×</button>
               )}
             </div>
-            <select className="sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            <select aria-label="Sort sessions" className="sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
               {SORT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
         </div>
 
-        {error && <div className="dash-error">{error}</div>}
-        {sessions.length === 0 && !error && (
-          <p className="dash-empty">No sessions yet. Log a workout via the bot to see it here.</p>
+        {error && <div className="dash-error" role="alert">{error} <button className="type-pill" disabled={loading || loadingMore} onClick={() => loadPage(lastPage.current.index, { append: lastPage.current.append })}>Retry</button></div>}
+        {sessions.length === 0 && !loading && !error && (
+          <p className="dash-empty">No completed sessions yet. Log a workout to see it here.</p>
         )}
         {totalEntries > 0 && filtered.length === 0 && (
           <p className="dash-empty">No entries match these filters.</p>
@@ -601,8 +610,8 @@ export default function Dashboard() {
               )
             )}
 
-            {hasMore && !exSearch.trim() && (
-              <button className="load-more-btn" onClick={loadMore} disabled={loadingMore}>
+            {hasMore && (
+              <button className="load-more-btn" onClick={loadMore} disabled={loading || loadingMore}>
                 {loadingMore ? 'Loading…' : `Load ${PAGE_SIZE} more sessions`}
               </button>
             )}
@@ -615,6 +624,7 @@ export default function Dashboard() {
             onOpenSession={sid => navigate(`/session/${sid}`)}
           />
         </div>
+        </>}
       </main>
     </div>
   )

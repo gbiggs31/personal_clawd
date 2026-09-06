@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase.js'
+import { invalidateCache } from './page-cache.js'
 
 /**
  * App-wide auth state, resolved once.
@@ -29,6 +30,8 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
       if (event === 'SIGNED_OUT') {
+        invalidateCache()
+        sessionStorage.removeItem('avenra-units')
         sessionStorage.removeItem(PROFILE_OK_KEY)
         setProfileOk(undefined)
       }
